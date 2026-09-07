@@ -45,18 +45,17 @@ python -m ingestion.ingest
 A different directory can be passed as the first argument. Documents and queries
 use the same embedding factory and Pinecone namespace.
 
-## Switch to Ollama
+## Models
 
-Change configuration only:
+The chat model is declared at the top of `backend/app/agent/agent.py`:
 
-```env
-LLM_MODEL=ollama:granite4.1:3b
-EMBEDDING_MODEL=ollama:nomic-embed-text
-OLLAMA_BASE_URL=http://localhost:11434
+```python
+model = "ollama:granite4.1:3b"
 ```
 
-LangChain resolves each integration from the prefix in the model string. The agent
-and RAG code do not contain provider-specific branches.
+The embedding model is declared at the top of `backend/app/rag/vector_store.py`.
+LangChain resolves each integration from the provider prefix. When using a remote
+Ollama instance, set `OLLAMA_BASE_URL` in `.env`.
 
 ## Tests
 
