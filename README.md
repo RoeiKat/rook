@@ -54,8 +54,10 @@ model = "ollama:granite4.1:3b"
 ```
 
 The embedding model is declared at the top of `backend/app/rag/vector_store.py`.
-LangChain resolves each integration from the provider prefix. When using a remote
-Ollama instance, set `OLLAMA_BASE_URL` in `.env`.
+LangChain resolves each integration from the provider prefix. When Docker connects
+to Ollama running on the host machine, use
+`OLLAMA_BASE_URL=http://host.docker.internal:11434`. For a remote Ollama server,
+replace it with that server's URL.
 
 ## Tests
 

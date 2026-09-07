@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -16,6 +17,7 @@ from app.database.models import Conversation, Message
 from app.database.repository import add_message, create_conversation, get_conversation, list_conversations
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -81,16 +83,20 @@ async def chat(body: ChatRequest):
         async with SessionLocal() as session:
             try:
                 conversation: Conversation | None = None
+                history = []
                 if body.conversation_id:
                     conversation = await get_conversation(session, body.conversation_id)
                     if conversation is None:
                         yield sse("error", {"message": "Conversation not found"})
                         return
+                    history = [
+                        history_message(item.role, item.content)
+                        for item in conversation.messages
+                    ]
                 else:
                     title = body.message.strip()[:60]
                     conversation = await create_conversation(session, title)
 
-                history = [history_message(item.role, item.content) for item in conversation.messages]
                 await add_message(session, conversation, "user", body.message.strip())
                 yield sse("metadata", {"conversation_id": str(conversation.id)})
 
@@ -112,7 +118,11 @@ async def chat(body: ChatRequest):
                 yield sse("done", {"message_id": str(message.id)})
             except Exception as exc:
                 await session.rollback()
-                yield sse("error", {"message": str(exc)})
+                logger.exception("Assistant response failed")
+                yield sse(
+                    "error",
+                    {"message": "Assistant is currently unavailable. Please try again."},
+                )
 
     return StreamingResponse(
         stream(),

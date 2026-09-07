@@ -8,6 +8,11 @@ const draftMessage = (role: Message["role"], content: string): Message => ({
   id: crypto.randomUUID(), role, content, created_at: new Date().toISOString(),
 });
 
+const reportError = (context: string, error: unknown) => {
+  console.error(`[Rook] ${context}`, error);
+  return error instanceof Error ? error.message : "An unexpected error occurred";
+};
+
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(() => localStorage.getItem("rook.conversationId"));
@@ -19,16 +24,23 @@ export default function App() {
   const refreshConversations = async () => setConversations(await listConversations());
 
   useEffect(() => {
-    refreshConversations().catch((err) => setError(err.message));
+    refreshConversations().catch((error) => {
+      setError(reportError("Failed to load conversations", error));
+    });
   }, []);
 
   useEffect(() => {
     if (!currentId) { setMessages([]); return; }
     localStorage.setItem("rook.conversationId", currentId);
+    if (loading) return;
     getConversation(currentId)
       .then((conversation) => setMessages(conversation.messages))
-      .catch((err) => { setError(err.message); setCurrentId(null); localStorage.removeItem("rook.conversationId"); });
-  }, [currentId]);
+      .catch((error) => {
+        setError(reportError("Failed to load conversation", error));
+        setCurrentId(null);
+        localStorage.removeItem("rook.conversationId");
+      });
+  }, [currentId, loading]);
 
   const startConversation = async () => {
     try {
@@ -38,7 +50,9 @@ export default function App() {
       setCurrentId(conversation.id);
       setMessages([]);
       setSidebarOpen(false);
-    } catch (err) { setError(err instanceof Error ? err.message : "Unable to create conversation"); }
+    } catch (error) {
+      setError(reportError("Failed to create conversation", error));
+    }
   };
 
   const sendMessage = async (content: string) => {
@@ -52,9 +66,9 @@ export default function App() {
         onToken: (token) => setMessages((items) => items.map((item) => item.id === assistantId ? { ...item, content: item.content + token } : item)),
       });
       await refreshConversations();
-    } catch (err) {
+    } catch (error) {
       setMessages((items) => items.filter((item) => item.id !== assistantId));
-      setError(err instanceof Error ? err.message : "Unable to send message");
+      setError(reportError("Failed to send message", error));
     } finally { setLoading(false); }
   };
 

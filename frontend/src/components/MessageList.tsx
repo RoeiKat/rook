@@ -3,7 +3,9 @@ import type { Message } from "../types";
 
 export function MessageList({ messages, loading }: { messages: Message[]; loading: boolean }) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, loading]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   if (!messages.length) {
     return (
