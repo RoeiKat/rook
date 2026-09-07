@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body { margin: 0; min-width: 320px; background: #fafaf9; color: #1c1917; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  button, textarea { font: inherit; }
+  button { border-radius: 4px; }
+}
+
+@layer components {
+  .icon-button { @apply grid size-9 place-items-center text-stone-600 hover:bg-stone-200; }
+}
