@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.agent.graph import get_agent
+from app.agent.agent import get_agent
 from app.database.connection import SessionLocal, get_session
 from app.database.models import Conversation, Message
 from app.database.repository import add_message, create_conversation, get_conversation, list_conversations

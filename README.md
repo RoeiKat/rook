@@ -2,8 +2,7 @@
 
 Rook is a personal AI assistant MVP with a React chat interface, FastAPI streaming
 API, PostgreSQL conversation history, and a LangChain `create_agent` backed by the
-LangGraph runtime. The compiled agent is mounted as a subgraph in an explicit
-`StateGraph`, and it can query Pinecone through a document-search tool.
+LangGraph runtime. The agent can query Pinecone through a document-search tool.
 
 ## Run with Docker
 
@@ -51,15 +50,13 @@ use the same embedding factory and Pinecone namespace.
 Change configuration only:
 
 ```env
-LLM_PROVIDER=ollama
-LLM_MODEL=qwen2.5
-EMBEDDING_PROVIDER=ollama
-EMBEDDING_MODEL=nomic-embed-text
+LLM_MODEL=ollama:granite4.1:3b
+EMBEDDING_MODEL=ollama:nomic-embed-text
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-Both LangChain factories use the single `OLLAMA_BASE_URL`; the graph and RAG code
-do not depend on a provider implementation.
+LangChain resolves each integration from the prefix in the model string. The agent
+and RAG code do not contain provider-specific branches.
 
 ## Tests
 
