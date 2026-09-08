@@ -33,28 +33,17 @@ export interface AuthSession {
   is_admin: boolean;
 }
 
-export async function checkAdminAccess(signal?: AbortSignal): Promise<void> {
-  await apiFetch("/api/auth/access", { signal });
-}
-
-export async function unlockAdminAccess(password: string, signal?: AbortSignal): Promise<void> {
-  await apiFetch("/api/auth/access", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }), signal,
-  });
-}
-
 export async function getSession(signal?: AbortSignal): Promise<AuthSession> {
   return (await apiFetch("/api/auth/session", { signal })).json();
 }
 
-export async function login(username: string, password: string, signal?: AbortSignal): Promise<void> {
-  await apiFetch("/api/auth/login", {
+export async function login(username: string, password: string, signal?: AbortSignal): Promise<AuthSession> {
+  return (await apiFetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
     signal,
-  });
+  })).json();
 }
 
 export async function logout(): Promise<void> {

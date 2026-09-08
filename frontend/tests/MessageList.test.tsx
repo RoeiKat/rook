@@ -3,8 +3,8 @@
 import { fireEvent, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Message } from "../types";
-import { MessageList } from "./MessageList";
+import type { Message } from "../src/types";
+import { MessageList } from "../src/components/MessageList";
 
 const message: Message = {
   id: "message-1",

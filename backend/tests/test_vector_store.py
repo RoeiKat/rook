@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.rag.vector_store import embedding_model, get_vector_store
+from app.config import get_settings
 
 
 def test_vector_store_uses_declared_embedding_model():
@@ -20,7 +21,11 @@ def test_vector_store_uses_declared_embedding_model():
         patch("app.rag.vector_store.init_embeddings", return_value=embeddings) as init,
         patch("app.rag.vector_store.PineconeVectorStore", return_value=vector_store) as pinecone,
     ):
-        assert get_vector_store() is vector_store
+        get_settings.cache_clear()
+        try:
+            assert get_vector_store() is vector_store
+        finally:
+            get_settings.cache_clear()
 
     init.assert_called_once_with(embedding_model)
     pinecone.assert_called_once_with(
@@ -33,5 +38,9 @@ def test_vector_store_uses_declared_embedding_model():
 
 def test_vector_store_requires_pinecone_key():
     with patch.dict("os.environ", {}, clear=True):
-        with pytest.raises(RuntimeError, match="PINECONE_API_KEY"):
-            get_vector_store()
+        get_settings.cache_clear()
+        try:
+            with pytest.raises(RuntimeError, match="PINECONE_API_KEY"):
+                get_vector_store()
+        finally:
+            get_settings.cache_clear()

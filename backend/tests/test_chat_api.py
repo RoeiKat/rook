@@ -53,7 +53,6 @@ async def api(database, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-session-secret-with-more-than-32-characters")
     monkeypatch.setenv("COOKIE_SECURE", "false")
     monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
-    monkeypatch.setenv("ADMIN_ACCESS_PASSWORD", "test-access-password")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password("test-password"))
     monkeypatch.setenv("FRONTEND_ORIGINS", "http://localhost:5173")
     get_settings.cache_clear()
@@ -220,7 +219,6 @@ async def test_administrator_can_inspect_historical_rows_and_logout(api):
         historical_id = str(historical.id)
     async with api.client() as administrator:
         assert (await administrator.get(f"/api/conversations/{historical_id}")).status_code == 404
-        assert (await administrator.post("/api/auth/access", json={"password": "test-access-password"})).status_code == 200
         login = await administrator.post("/api/auth/login", json={"username": "test-admin", "password": "test-password"})
         assert login.status_code == 200
         listing = await administrator.get("/api/conversations")

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, checkAdminAccess, unlockAdminAccess, createConversation, getConversation, getSession, listConversations, login, logout, streamChat } from "./chat";
+import { ApiError, createConversation, getConversation, getSession, listConversations, login, logout, streamChat } from "../src/api/chat";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -59,15 +59,11 @@ describe("cookie-authenticated API requests", () => {
     await listConversations();
     await getConversation("conversation-id");
     await createConversation("What has Roei built?");
-    await unlockAdminAccess("test-page-password");
-    await checkAdminAccess();
     for (const [, options] of vi.mocked(fetch).mock.calls) {
       expect(options?.credentials).toBe("include");
       if (options?.method === "POST") expect(new Headers(options.headers).get("X-CSRF-Protection")).toBe("1");
     }
     expect(JSON.parse(vi.mocked(fetch).mock.calls[5][1]?.body as string)).toEqual({ message: "What has Roei built?" });
-    expect(vi.mocked(fetch).mock.calls[6][0]).toBe("/api/auth/access");
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[6][1]?.body as string)).toEqual({ password: "test-page-password" });
   });
 
   it("preserves HTTP status for access handling", async () => {

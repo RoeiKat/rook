@@ -1,25 +1,59 @@
 # Rook
 
-Rook is a personal AI assistant MVP with a React chat interface, FastAPI streaming
-API, PostgreSQL conversation history, and a LangChain `create_agent` backed by the
-LangGraph runtime. The agent can query Pinecone through a document-search tool.
+Rook is a React and FastAPI chat application. Conversations and messages live in
+PostgreSQL, answers stream from a LangChain agent, and optional document search
+uses Pinecone.
 
-## Run with Docker
+## Development with Docker
 
-1. Copy `backend/.env.example` to `backend/.env`, configure the model, and set a
-   random `SESSION_SECRET` of at least 32 characters. For the local HTTP URLs
-   below, explicitly set `COOKIE_SECURE=false`; keep it `true` when using HTTPS.
-2. Provide `OPENAI_API_KEY` for OpenAI models/embeddings. Set `PINECONE_API_KEY` and an existing `PINECONE_INDEX` to enable RAG. Without a
-   Pinecone key, chat still works and retrieval returns no context.
-3. Run `docker compose up --build`.
-4. Open `http://localhost:5173`.
+Copy the example backend environment file, then start the application:
 
-The API is available at `http://localhost:8000`. Startup runs an additive,
-transactional schema migration, including on an existing database. Existing
-conversation titles and messages are preserved; conversations created before
-visitor ownership was introduced are accessible only to the administrator.
+```powershell
+Copy-Item backend/.env.example backend/.env
+docker compose up --build
+```
 
-## Local development
+Open `http://localhost:5173`. Docker Compose runs Vite and Uvicorn in development
+mode, so frontend and backend changes reload without rebuilding. Browser errors
+point to the TypeScript source. The backend is available at `http://localhost:8000`.
+
+The development setup has a local-only session secret and uses non-Secure cookies
+over HTTP. You therefore do not need to configure authentication before testing
+public chat. Production mode (`APP_ENV=production`) requires a random
+`SESSION_SECRET` of at least 32 characters and defaults to Secure cookies.
+
+Source changes reload automatically. After changing an environment variable or a
+dependency, recreate or rebuild the relevant container:
+
+```powershell
+docker compose up -d --force-recreate backend
+```
+
+## Environment files
+
+Backend settings are documented in `backend/.env.example`:
+
+- `LLM_PROVIDER` and `LLM_MODEL` select the chat and title model.
+- `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL` select the embedding model.
+- `OLLAMA_BASE_URL` points Docker at Ollama on the host machine.
+- `OPENAI_API_KEY` is required when an OpenAI model is selected.
+- `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
+- `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` enable the `/admin` login.
+- `FRONTEND_ORIGINS` lists browser origins allowed to call the API.
+
+Frontend settings are documented separately in `frontend/.env.example`:
+
+- `VITE_API_URL` is the public API URL used by the browser. Leave it empty when
+  using the included Vite proxy.
+- `API_PROXY_TARGET` is the backend target used only by the Vite development
+  server. Docker Compose sets it to `http://backend:8000` automatically.
+
+Only variables prefixed with `VITE_` are included in browser code. Never put
+passwords, API keys, or session secrets in the frontend environment file.
+
+## Local development without Docker
+
+Run PostgreSQL separately and then start the backend:
 
 ```powershell
 cd backend
@@ -33,140 +67,96 @@ In another terminal:
 
 ```powershell
 cd frontend
+Copy-Item .env.example .env
 npm install
 npm run dev
 ```
 
-## Ingest documents
+## How conversations work
 
-Place `.txt`, `.md`, or `.pdf` files in `backend/ingestion/documents`, then run this
-from `backend`:
+The visitor cookie contains a signed browser-session ID. The backend uses that ID
+to prevent one visitor from opening another visitor's conversation. The cookie is
+HttpOnly, so React does not read or manage it.
+
+The current conversation ID is also stored in `localStorage`. This lets the UI ask
+the backend to reopen that conversation after a refresh; the cookie remains the
+actual ownership check.
+
+Clicking **New conversation** only clears the current ID and messages in the
+browser. It does not create a database row. The next submitted message sends a
+null `conversation_id`, and the backend then:
+
+1. creates the conversation and title;
+2. saves the user message;
+3. streams the assistant answer;
+4. saves the completed assistant message.
+
+The relevant code is concentrated in `backend/app/api/chat.py`,
+`backend/app/auth.py`, and `frontend/src/components/ConversationChat.tsx`.
+
+## Inspect PostgreSQL
+
+Open an interactive PostgreSQL prompt in the Docker container:
 
 ```powershell
-python -m ingestion.ingest
+docker compose exec postgres psql -U rook -d rook
 ```
 
-A different directory can be passed as the first argument. Documents and queries
-use the same embedding model and Pinecone namespace.
+Useful read-only queries:
 
-## Models
+```sql
+SELECT id, title, visitor_session_id, created_at, updated_at
+FROM conversations
+ORDER BY created_at DESC;
 
-Models are plain strings in the existing Python files:
+SELECT conversation_id, role, content, created_at
+FROM messages
+ORDER BY created_at DESC;
 
-- `app/agent/agent.py`: `model = "ollama:granite4.1:3b"`
-- `app/rag/vector_store.py`: `embedding_model = "openai:text-embedding-3-small"`
+SELECT c.title, m.role, m.content, m.created_at
+FROM conversations AS c
+JOIN messages AS m ON m.conversation_id = c.id
+ORDER BY c.created_at DESC, m.created_at;
+```
 
-Edit those strings to change models. Model selection does not read `.env`.
-API keys and the Ollama connection URL remain in `.env`. Changing the
-embedding model requires re-ingestion into a compatible Pinecone index/namespace.
+Exit with `\q`. If `/api/chat` fails before returning its `metadata` event, check
+these tables to see whether the first write occurred.
 
-The model string lives beside your chat agent in `app/agent/agent.py`. The agent
-passes it directly to LangChain's `create_agent`; `app/agent/titles.py` uses the
-same string for a direct, tool-free `init_chat_model(...).ainvoke(...)` call. The
-existing document-search tool and answering agent remain in place. When Docker connects
-to Ollama running on the host machine, use
-`OLLAMA_BASE_URL=http://host.docker.internal:11434`. For a remote Ollama server,
-replace it with that server's URL.
+## Administrator login
 
-## Interface and logo
-
-The public interface has a narrow logo/theme rail, top-right New conversation
-and information controls, and a centered welcome/composer. The three welcome
-sentences and typing timings are together in `frontend/src/components/Welcome.tsx`.
-Reduced-motion preferences show a static heading. Colors and responsive layout
-are in `frontend/src/index.css`; theme selection persists under `rook.theme`.
-
-Replace `frontend/public/rook.svg` to update both logo placements through
-`RookLogo.tsx`. The supplied SVG's geometry is unchanged; its black artwork is
-inverted for dark mode. The info tooltip text is `INFO_TEXT` in `ChatWindow.tsx`.
-
-After editing the frontend, rebuild its Docker image as well as the backend:
-`docker compose up -d --build frontend backend`, then reload `http://localhost:5173`.
-Local `node_modules`, build output, and backend virtual environments are excluded
-from Docker contexts.
-
-## Visitor sessions and administrator history
-
-Visitors can chat without logging in. A server-issued HttpOnly cookie owns each
-visitor's conversations, so the same browser can reopen them after refreshing.
-The locally stored conversation UUID is only a convenience; a different visitor
-receives the same `404` as for a nonexistent conversation. Clearing or expiring
-the visitor cookie removes that browser's access. Global history is available
-only at `/admin` after backend-verified administrator login.
-
-To enable administrator login, set `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` in
-`backend/.env`. Generate the hash interactively from `backend/`:
+The public chat needs no account. The `/admin` page uses one username and password
+to list all conversations. Generate a password hash from `backend/`:
 
 ```powershell
 python -m app.auth
 ```
 
-The helper prompts for the password without echoing it. Store the resulting hash,
-not the password. Wrap the hash in single quotes in `.env` so Docker Compose keeps
-its dollar signs literal: `ADMIN_PASSWORD_HASH='<generated hash>'`.
-Generate `SESSION_SECRET` with a cryptographically secure random
-generator; for example, `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
-There are no default administrator credentials. Missing administrator settings
-leave global history protected. Missing `SESSION_SECRET` disables browser-session
-operations while `/health` remains public.
+Put the username and generated hash in `backend/.env`. Wrap the hash in single
+quotes because it contains dollar signs:
 
-There is no registration endpoint or user creation flow. The only administrator
-is the username/password hash you manage in `.env`; login cannot create accounts.
-Session and password helpers are kept together in `app/auth.py`, with the
-HTTP authentication routes in `app/api/auth.py`.
+```env
+ADMIN_USERNAME=roei
+ADMIN_PASSWORD_HASH='<generated hash>'
+```
 
-Set a separate `ADMIN_ACCESS_PASSWORD` in `backend/.env` to protect the login
-page itself. Visit `/admin/access` and enter that password first; the frontend
-sends it in the body of `POST /api/auth/access`. Correct verification establishes
-an eight-hour HttpOnly access cookie. `GET /api/auth/access` verifies that cookie
-before the frontend renders `/admin`, `/admin/login`, or `/login`. Missing,
-incorrect, expired, or invalid access redirects to the homepage. Registration
-remains disabled, and `/register` and `/registration` redirect home.
+The browser receives one admin cookie after login. Logout deletes its matching
+server-side session and clears the cookie.
 
-The backend also requires this access cookie on `POST /api/auth/login`; knowing
-only the administrator's login credentials cannot bypass the page gate. The
-access cookie grants no conversation privileges by itself. Logout revokes both
-cookies server-side. Changing `ADMIN_ACCESS_PASSWORD` and restarting the backend
-invalidates previous access. Access-password attempts have their own rate limit.
-Keep this value in the backend `.env` only, never in a `VITE_*` variable. The
-frontend asks you to type it; it does not contain a copy of the expected secret.
+## Document ingestion
 
-Administrator sessions expire after eight hours and logout revokes them in the
-database. Successful login rotates the session. Changing the administrator
-credentials or session secret also invalidates previous administrator sessions.
-Failed login attempts are limited to five per fifteen-minute window per client
-address, shared across backend workers through PostgreSQL. Configure proxy trust
-at deployment so the backend receives the intended client address.
+Place `.txt`, `.md`, or `.pdf` files in `backend/ingestion/documents`, then run:
 
-Set `FRONTEND_ORIGINS` to a comma-separated list of exact allowed origins. All
-mutation requests require both a matching `Origin` and `X-CSRF-Protection: 1`;
-the frontend sends the header and includes cookies on normal and streaming
-requests. Cookies use `SameSite=Lax`, so deploy the UI and API on the same site
-(the same-origin frontend proxy is supported). Production requires HTTPS and
-`COOKIE_SECURE=true`. `COOKIE_SECURE=false` is an explicit local HTTP opt-in.
+```powershell
+cd backend
+python -m ingestion.ingest
+```
 
-## Conversation creation and streaming
+Documents and queries must use the same embedding model. Changing that model
+requires re-ingesting into a compatible Pinecone index or namespace.
 
-New conversation creates a local draft. The first question goes to `POST
-/api/chat` with `{ "conversation_id": null, "message": "..." }`. Before inserting
-the conversation, the backend generates a plain title of at most five words and
-160 characters. Title generation has an eight-second timeout and a deterministic
-question-based fallback. Follow-ups preserve the original title. Title generation
-does not invoke retrieval, appear in chat history, or enter the answer stream.
+## Tests and production frontend image
 
-The streaming contract remains `metadata`, `token`, `done`, and `error`.
-`metadata` now includes both `conversation_id` and the persisted `title`.
-The assistant answer is committed before `done`; stream failures emit a sanitized
-`error` and do not save a partial assistant answer as completed.
-
-`POST /api/conversations` remains available for API clients but now requires
-`{ "message": "<first question>" }`. It creates a titled, owned conversation
-without storing a message or generating an answer. Send the question once to
-`POST /api/chat` with the returned ID to start the exchange. Empty requests and
-the old title-only payload are rejected. Authentication endpoints are
-`POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/session`.
-
-## Tests
+Frontend tests live in `frontend/tests`.
 
 ```powershell
 cd backend
@@ -177,9 +167,9 @@ npm test
 npm run build
 ```
 
-External models and Pinecone are mocked in tests. To also run API and migration
-checks against PostgreSQL, set `TEST_DATABASE_URL` to an isolated test database
-before running `pytest`. The tests create and remove their own randomly named
-schemas; the database user must have permission to create schemas. They verify
-legacy data preservation, migration rollback/idempotency, ownership, and normal
-streaming persistence against PostgreSQL.
+Docker Compose uses the `development` stage of the frontend Dockerfile. To create
+the optional Nginx production image:
+
+```powershell
+docker build --target production -t rook-frontend ./frontend
+```

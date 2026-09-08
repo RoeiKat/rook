@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,14 +24,6 @@ class AdminSession(Base):
     credential_fingerprint: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-
-
-class LoginRateLimit(Base):
-    __tablename__ = "login_rate_limits"
-
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    attempts: Mapped[int] = mapped_column(Integer)
-    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class Conversation(Base):

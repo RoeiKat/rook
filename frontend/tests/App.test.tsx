@@ -2,14 +2,13 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
-import { ApiError, checkAdminAccess, unlockAdminAccess, createConversation, getConversation, getSession, listConversations, login, logout, streamChat, type StreamHandlers } from "./api/chat";
-import type { ConversationDetail } from "./types";
+import App from "../src/App";
+import { ApiError, createConversation, getConversation, getSession, listConversations, login, logout, streamChat, type StreamHandlers } from "../src/api/chat";
+import type { ConversationDetail } from "../src/types";
 
-vi.mock("./api/chat", async (importOriginal) => ({
-  ...await importOriginal<typeof import("./api/chat")>(),
+vi.mock("../src/api/chat", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/api/chat")>(),
   getSession: vi.fn(), login: vi.fn(), logout: vi.fn(),
-  checkAdminAccess: vi.fn(), unlockAdminAccess: vi.fn(),
   createConversation: vi.fn(), getConversation: vi.fn(),
   listConversations: vi.fn(), streamChat: vi.fn(),
 }));
@@ -36,9 +35,7 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/");
   Element.prototype.scrollIntoView = vi.fn();
   vi.mocked(getSession).mockResolvedValue({ is_admin: false });
-  vi.mocked(checkAdminAccess).mockResolvedValue(undefined);
-  vi.mocked(unlockAdminAccess).mockResolvedValue(undefined);
-  vi.mocked(login).mockResolvedValue(undefined);
+  vi.mocked(login).mockResolvedValue({ is_admin: true });
   vi.mocked(logout).mockResolvedValue(undefined);
   vi.mocked(listConversations).mockResolvedValue([conversation]);
   vi.mocked(getConversation).mockResolvedValue(conversation);
@@ -50,84 +47,6 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
-
-describe("administrator access password", () => {
-  it.each(["/admin", "/admin/login", "/login"])("redirects %s home before showing login when access is missing", async (path) => {
-    window.history.replaceState({}, "", path);
-    vi.mocked(checkAdminAccess).mockRejectedValue(new ApiError("Access required", 403));
-    render(<App />);
-    expect(screen.queryByLabelText("Username")).toBeNull();
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.queryByLabelText("Username")).toBeNull();
-    expect(getSession).not.toHaveBeenCalled();
-    expect(listConversations).not.toHaveBeenCalled();
-  });
-
-  it("waits for access verification before showing login", async () => {
-    window.history.replaceState({}, "", "/admin");
-    const pending = deferred<void>();
-    vi.mocked(checkAdminAccess).mockReturnValue(pending.promise);
-    render(<App />);
-    expect(screen.queryByLabelText("Username")).toBeNull();
-    expect(getSession).not.toHaveBeenCalled();
-    await act(async () => pending.resolve());
-    await screen.findByLabelText("Username");
-  });
-
-  it("submits the entered access password and then opens login without storing it", async () => {
-    window.history.replaceState({}, "", "/admin/access");
-    render(<App />);
-    expect(screen.queryByLabelText("Username")).toBeNull();
-    fireEvent.change(screen.getByLabelText("Access password"), { target: { value: "page-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await screen.findByLabelText("Username");
-    expect(unlockAdminAccess).toHaveBeenCalledWith("page-secret", expect.any(AbortSignal));
-    expect(window.location.pathname).toBe("/admin");
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
-  });
-
-  it("redirects home when the access password is rejected", async () => {
-    window.history.replaceState({}, "", "/admin/access");
-    vi.mocked(unlockAdminAccess).mockRejectedValue(new ApiError("Access required", 403));
-    render(<App />);
-    fireEvent.change(screen.getByLabelText("Access password"), { target: { value: "wrong" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.queryByLabelText("Username")).toBeNull();
-    expect(login).not.toHaveBeenCalled();
-  });
-
-  it("redirects home if page access expires while the login page is open", async () => {
-    window.history.replaceState({}, "", "/admin");
-    render(<App />);
-    await screen.findByLabelText("Username");
-    vi.mocked(checkAdminAccess).mockRejectedValue(new ApiError("Access required", 403));
-    fireEvent.focus(window);
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.queryByLabelText("Username")).toBeNull();
-  });
-
-  it("continues checking page access after an incorrect administrator login", async () => {
-    window.history.replaceState({}, "", "/admin");
-    vi.mocked(login).mockRejectedValue(new ApiError("Invalid username or password", 401));
-    render(<App />);
-    fireEvent.change(await screen.findByLabelText("Username"), { target: { value: "Roei" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "wrong" } });
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    await screen.findByRole("alert");
-    vi.mocked(checkAdminAccess).mockRejectedValue(new ApiError("Access required", 403));
-    fireEvent.focus(window);
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-  });
-
-  it.each(["/register", "/registration", "/admin/register"])("keeps registration disabled at %s", async (path) => {
-    window.history.replaceState({}, "", path);
-    render(<App />);
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.queryByLabelText("Username")).toBeNull();
-  });
-});
 
 describe("public chat", () => {
   it("does not fetch administrator history and resets New conversation locally", async () => {
@@ -226,12 +145,13 @@ describe("administrator history", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "test-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await screen.findByRole("button", { name: conversation.title });
-    expect(login).toHaveBeenCalledWith("Roei", "test-password", expect.any(AbortSignal));
-    expect(getSession).toHaveBeenCalledTimes(2);
+    expect(login).toHaveBeenCalledWith("Roei", "test-password");
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(localStorage.length).toBe(0);
   });
 
   it("does not trust login success without a verified administrator session", async () => {
+    vi.mocked(login).mockResolvedValue({ is_admin: false });
     render(<App />);
     fireEvent.change(await screen.findByLabelText("Username"), { target: { value: "Roei" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "test-password" } });
@@ -250,41 +170,13 @@ describe("administrator history", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: conversation.title }));
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen.queryByLabelText("Username")).toBeNull();
+    expect(screen.getByLabelText("Username")).toBeTruthy();
     expect(screen.queryByText(conversation.title)).toBeNull();
     expect(vi.mocked(getConversation).mock.calls[0][1]?.aborted).toBe(true);
     await act(async () => { pendingDetail.resolve(conversation); pendingLogout.resolve(); });
-    expect(window.location.pathname).toBe("/");
+    expect(window.location.pathname).toBe("/admin");
     expect(screen.queryByText("A private answer")).toBeNull();
     expect(screen.queryByText(conversation.title)).toBeNull();
-  });
-
-  it("clears private messages when session revalidation fails", async () => {
-    vi.mocked(getSession).mockResolvedValue({ is_admin: true });
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: conversation.title }));
-    await screen.findByText("A private answer");
-    vi.mocked(getSession).mockResolvedValue({ is_admin: false });
-    fireEvent.focus(window);
-    await screen.findByLabelText("Username");
-    expect(screen.queryByText("A private answer")).toBeNull();
-    expect(screen.queryByText(conversation.title)).toBeNull();
-  });
-
-  it("hides private data while revalidating and preserves selection after success", async () => {
-    vi.mocked(getSession).mockResolvedValue({ is_admin: true });
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: conversation.title }));
-    await screen.findByText("A private answer");
-    const pending = deferred<{ is_admin: boolean }>();
-    vi.mocked(getSession).mockReturnValue(pending.promise);
-    fireEvent.focus(window);
-    expect(screen.getByRole("status").textContent).toBe("Checking session...");
-    expect(screen.queryByText("A private answer")).toBeNull();
-    expect(screen.queryByText(conversation.title)).toBeNull();
-    await act(async () => pending.resolve({ is_admin: true }));
-    expect(screen.getByText("A private answer")).toBeTruthy();
-    expect(getConversation).toHaveBeenCalledTimes(1);
   });
 
   it("returns to login on an administrator 401", async () => {

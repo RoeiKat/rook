@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import indexHtml from "../../index.html?raw";
-import { ChatWindow, INFO_TEXT } from "./ChatWindow";
-import { RookLogo } from "./RookLogo";
-import { ThemeToggle } from "./ThemeToggle";
-import { Welcome, WELCOME } from "./Welcome";
-import { MessageInput } from "./MessageInput";
+import indexHtml from "../index.html?raw";
+import { ChatWindow, INFO_TEXT } from "../src/components/ChatWindow";
+import { RookLogo } from "../src/components/RookLogo";
+import { ThemeToggle } from "../src/components/ThemeToggle";
+import { Welcome, WELCOME } from "../src/components/Welcome";
+import { MessageInput } from "../src/components/MessageInput";
 
 function mediaPreferences({ dark = false, reduced = false } = {}) {
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
