@@ -1,8 +1,14 @@
-import { FormEvent, KeyboardEvent, useState } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUp } from "lucide-react";
 
 export function MessageInput({ disabled, onSend }: { disabled: boolean; onSend: (value: string) => void }) {
   const [value, setValue] = useState("");
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (!textarea.current) return;
+    textarea.current.style.height = "0px";
+    textarea.current.style.height = `${Math.max(28, Math.min(textarea.current.scrollHeight, 160))}px`;
+  }, [value]);
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const message = value.trim();
@@ -11,25 +17,17 @@ export function MessageInput({ disabled, onSend }: { disabled: boolean; onSend: 
     onSend(message);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       submit();
     }
   };
-  return (
-    <form onSubmit={submit} className="mx-auto flex max-w-3xl items-end gap-2 border border-stone-300 bg-white p-2 shadow-sm focus-within:border-stone-500">
-      <textarea
-        aria-label="Message"
-        rows={1}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder="Message Rook"
-        className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-6 outline-none placeholder:text-stone-400"
-      />
-      <button className="grid size-10 shrink-0 place-items-center bg-emerald-700 text-white disabled:bg-stone-300" disabled={disabled || !value.trim()} aria-label="Send message">
-        <ArrowUp size={19} />
-      </button>
-    </form>
-  );
+  return <form onSubmit={submit} className="message-composer">
+    <textarea ref={textarea} aria-label="Message" rows={1} value={value}
+      onChange={(event) => setValue(event.target.value)} onKeyDown={onKeyDown}
+      placeholder="Message Rook" />
+    <button className="send-button" disabled={disabled || !value.trim()} aria-label="Send message">
+      <ArrowUp size={20} strokeWidth={2} aria-hidden="true" />
+    </button>
+  </form>;
 }

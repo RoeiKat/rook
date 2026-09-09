@@ -9,11 +9,32 @@ class Base(DeclarativeBase):
     pass
 
 
+class VisitorSession(Base):
+    __tablename__ = "visitor_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    credential_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    title: Mapped[str] = mapped_column(String(160), default="New conversation")
+    title: Mapped[str] = mapped_column(String(160))
+    # Null ownership is deliberately reserved for historical, administrator-only rows.
+    visitor_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("visitor_sessions.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -34,4 +55,3 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
-

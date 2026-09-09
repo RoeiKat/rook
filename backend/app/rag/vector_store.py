@@ -3,16 +3,19 @@ import os
 from langchain.embeddings import init_embeddings
 from langchain_pinecone import PineconeVectorStore
 
+
 embedding_model = "openai:text-embedding-3-small"
+PINECONE_INDEX = "rook"
+PINECONE_NAMESPACE = "documents"
 
 
 def get_vector_store() -> PineconeVectorStore:
-    api_key = os.getenv("PINECONE_API_KEY", "")
-    if not api_key:
+    pinecone_api_key = os.getenv("PINECONE_API_KEY", "")
+    if not pinecone_api_key:
         raise RuntimeError("PINECONE_API_KEY is required for retrieval and ingestion")
     return PineconeVectorStore(
-        index_name=os.getenv("PINECONE_INDEX", "rook"),
+        index_name=PINECONE_INDEX,
         embedding=init_embeddings(embedding_model),
-        namespace=os.getenv("PINECONE_NAMESPACE", "documents"),
-        pinecone_api_key=api_key,
+        namespace=PINECONE_NAMESPACE,
+        pinecone_api_key=pinecone_api_key,
     )

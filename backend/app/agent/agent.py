@@ -6,6 +6,8 @@ from app.agent.tools import search_documents
 from app.prompts.system import SYSTEM_PROMPT
 
 
+# Model selection is an application choice. Credentials and provider URLs remain
+# deployment settings supplied through the environment.
 model = "ollama:granite4.1:3b"
 
 

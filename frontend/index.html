@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f7f7f5" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" href="/rook-mark.svg" type="image/svg+xml" />
+    <script>
+      (() => {
+        let saved;
+        try { saved = localStorage.getItem("rook.theme"); } catch {}
+        const theme = saved === "light" || saved === "dark" ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <title>Rook</title>
   </head>
   <body>
