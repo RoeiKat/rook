@@ -2,8 +2,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.rag.vector_store import embedding_model, get_vector_store
-from app.config import get_settings
+from app.rag.vector_store import (
+    PINECONE_INDEX,
+    PINECONE_NAMESPACE,
+    embedding_model,
+    get_vector_store,
+)
 
 
 def test_vector_store_uses_declared_embedding_model():
@@ -14,33 +18,23 @@ def test_vector_store_uses_declared_embedding_model():
             "os.environ",
             {
                 "PINECONE_API_KEY": "test-key",
-                "PINECONE_INDEX": "test-index",
-                "PINECONE_NAMESPACE": "test-namespace",
             },
         ),
         patch("app.rag.vector_store.init_embeddings", return_value=embeddings) as init,
         patch("app.rag.vector_store.PineconeVectorStore", return_value=vector_store) as pinecone,
     ):
-        get_settings.cache_clear()
-        try:
-            assert get_vector_store() is vector_store
-        finally:
-            get_settings.cache_clear()
+        assert get_vector_store() is vector_store
 
     init.assert_called_once_with(embedding_model)
     pinecone.assert_called_once_with(
-        index_name="test-index",
+        index_name=PINECONE_INDEX,
         embedding=embeddings,
-        namespace="test-namespace",
+        namespace=PINECONE_NAMESPACE,
         pinecone_api_key="test-key",
     )
 
 
 def test_vector_store_requires_pinecone_key():
     with patch.dict("os.environ", {}, clear=True):
-        get_settings.cache_clear()
-        try:
-            with pytest.raises(RuntimeError, match="PINECONE_API_KEY"):
-                get_vector_store()
-        finally:
-            get_settings.cache_clear()
+        with pytest.raises(RuntimeError, match="PINECONE_API_KEY"):
+            get_vector_store()

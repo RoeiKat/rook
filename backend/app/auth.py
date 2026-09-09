@@ -18,6 +18,8 @@ from app.database.connection import get_session
 from app.database.models import AdminSession, VisitorSession
 
 ITERATIONS = 600_000
+VISITOR_SESSION_DAYS = 365
+ADMIN_SESSION_SECONDS = 8 * 60 * 60
 VISITOR_COOKIE = "rook_visitor"
 ADMIN_COOKIE = "rook_admin"
 COOKIE_PATH = "/api"
@@ -110,7 +112,7 @@ async def get_identity(
 
     visitor = VisitorSession(
         id=uuid.uuid4(),
-        expires_at=datetime.now(UTC) + timedelta(days=settings.visitor_session_days),
+        expires_at=datetime.now(UTC) + timedelta(days=VISITOR_SESSION_DAYS),
     )
     session.add(visitor)
     await session.commit()
@@ -147,7 +149,7 @@ def apply_visitor_cookie(response: Response, identity: Identity) -> None:
         response.set_cookie(
             VISITOR_COOKIE,
             identity.visitor_cookie,
-            max_age=settings.visitor_session_days * 86400,
+            max_age=VISITOR_SESSION_DAYS * 86400,
             httponly=True,
             secure=settings.cookie_secure,
             samesite="lax",
@@ -160,7 +162,7 @@ def apply_admin_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         ADMIN_COOKIE,
         token,
-        max_age=settings.admin_session_seconds,
+        max_age=ADMIN_SESSION_SECONDS,
         httponly=True,
         secure=settings.cookie_secure,
         samesite="lax",

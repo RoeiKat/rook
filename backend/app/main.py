@@ -1,4 +1,3 @@
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,7 +20,7 @@ async def lifespan(_: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title=os.getenv("APP_NAME", "Rook"), lifespan=lifespan)
+app = FastAPI(title="Rook", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().frontend_origins,

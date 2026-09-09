@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.auth import (
+    ADMIN_SESSION_SECONDS,
     ADMIN_COOKIE,
     apply_admin_cookie,
     apply_visitor_cookie,
@@ -69,7 +70,7 @@ async def login(
     session.add(AdminSession(
         token_hash=hash_admin_token(token),
         credential_fingerprint=credential_fingerprint(settings),
-        expires_at=datetime.now(UTC) + timedelta(seconds=settings.admin_session_seconds),
+        expires_at=datetime.now(UTC) + timedelta(seconds=ADMIN_SESSION_SECONDS),
     ))
     await session.commit()
     apply_visitor_cookie(response, identity)
