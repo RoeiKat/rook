@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import indexHtml from "../index.html?raw";
 import { ChatWindow, INFO_TEXT } from "../src/components/ChatWindow";
-import { RookLogo } from "../src/components/RookLogo";
+import { RookLogo, WelcomeRookLogo } from "../src/components/RookLogo";
 import { ThemeToggle } from "../src/components/ThemeToggle";
 import { Welcome, WELCOME } from "../src/components/Welcome";
 import { MessageInput } from "../src/components/MessageInput";
@@ -24,11 +24,11 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("appearance", () => {
   it("uses the mark in the rail and the full logo on the welcome screen", () => {
-    render(<><RookLogo /><RookLogo size="welcome" /></>);
+    render(<><RookLogo /><WelcomeRookLogo spinDurationMs={1400} spinIntervalMs={5000} hoverDurationMs={4600} reducedMotion /></>);
     const logos = screen.getAllByRole("img", { name: "Rook" });
     expect(logos).toHaveLength(2);
     expect(logos[0].classList).toContain("rook-logo-rail");
-    expect(logos[1].classList).toContain("rook-logo-welcome");
+    expect(logos[1].classList).toContain("welcome-rook-logo");
     expect(indexHtml).toContain('href="/rook-mark.svg"');
   });
 
@@ -89,6 +89,22 @@ describe("appearance", () => {
 });
 
 describe("welcome animation", () => {
+  it("uses independent spin, interval, and hover timing parameters", () => {
+    vi.useFakeTimers();
+    const view = render(<WelcomeRookLogo spinDurationMs={120} spinIntervalMs={300} hoverDurationMs={900} reducedMotion={false} />);
+    const logo = screen.getByRole("img", { name: "Rook" });
+    const orbit = view.container.querySelector(".welcome-logo-orbit")!;
+    expect(logo.style.getPropertyValue("--rook-spin-duration")).toBe("120ms");
+    expect(logo.style.getPropertyValue("--rook-hover-duration")).toBe("900ms");
+    expect(orbit.classList).not.toContain("is-spinning");
+    act(() => vi.advanceTimersByTime(300));
+    expect(orbit.classList).toContain("is-spinning");
+    act(() => vi.advanceTimersByTime(120));
+    expect(orbit.classList).not.toContain("is-spinning");
+    act(() => vi.advanceTimersByTime(300));
+    expect(orbit.classList).toContain("is-spinning");
+  });
+
   it("types, pauses and deletes in the specified order with a stable accessible heading", () => {
     vi.useFakeTimers();
     const view = render(<Welcome />);

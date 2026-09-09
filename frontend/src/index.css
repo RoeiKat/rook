@@ -101,12 +101,66 @@
   mask-image: url("/rook-mark.svg");
   -webkit-mask-image: url("/rook-mark.svg");
 }
-.rook-logo-welcome {
+.welcome-rook-logo {
   width: 340px;
   height: 340px;
   margin: 0 auto 16px;
-  mask-image: url("/rook.svg");
-  -webkit-mask-image: url("/rook.svg");
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.welcome-logo-mark {
+  position: relative;
+  width: 205px;
+  height: 205px;
+  flex-shrink: 0;
+  animation: rook-hover var(--rook-hover-duration) ease-in-out infinite;
+}
+.welcome-logo-orbit, .welcome-logo-dot, .welcome-logo-wordmark {
+  display: block;
+  background: var(--logo-color);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+.welcome-logo-orbit, .welcome-logo-dot {
+  position: absolute;
+  inset: 0;
+}
+.welcome-logo-orbit {
+  mask-image: url("/rook-orbit.svg");
+  -webkit-mask-image: url("/rook-orbit.svg");
+  transform-origin: center;
+}
+.welcome-logo-orbit.is-spinning {
+  animation: rook-spin var(--rook-spin-duration) cubic-bezier(.45, 0, .2, 1);
+}
+.welcome-logo-dot {
+  mask-image: url("/rook-dot.svg");
+  -webkit-mask-image: url("/rook-dot.svg");
+}
+.welcome-logo-wordmark {
+  width: 185px;
+  height: 72px;
+  margin-top: -10px;
+  flex-shrink: 0;
+  mask-image: url("/rook-wordmark.svg");
+  -webkit-mask-image: url("/rook-wordmark.svg");
+}
+.welcome-rook-logo.is-static .welcome-logo-mark {
+  animation: none;
+}
+@keyframes rook-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes rook-hover {
+  0%, 100% { transform: translateY(5px); }
+  50% { transform: translateY(-7px); }
 }
 .rook-logo-menu {
   margin-top: 12px;
@@ -636,10 +690,19 @@
     overflow: hidden;
     padding: 0 12px max(16px, env(safe-area-inset-bottom));
   }
-  .rook-logo-welcome {
+  .welcome-rook-logo {
     width: 280px;
     height: 280px;
     margin-bottom: 14px;
+  }
+  .welcome-logo-mark {
+    width: 168px;
+    height: 168px;
+  }
+  .welcome-logo-wordmark {
+    width: 154px;
+    height: 60px;
+    margin-top: -8px;
   }
   .welcome-heading {
     align-self: center;
@@ -678,10 +741,19 @@
   .welcome-area {
     padding-top: 0;
   }
-  .rook-logo-welcome {
+  .welcome-rook-logo {
     width: 170px;
     height: 170px;
     margin-bottom: 8px;
+  }
+  .welcome-logo-mark {
+    width: 100px;
+    height: 100px;
+  }
+  .welcome-logo-wordmark {
+    width: 96px;
+    height: 38px;
+    margin-top: -5px;
   }
   .welcome-heading {
     margin-bottom: 16px;
