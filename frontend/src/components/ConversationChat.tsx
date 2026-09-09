@@ -20,7 +20,6 @@ interface Props {
 export function ConversationChat({ administrator = false, checkingSession = false, onAuthenticationFailure, onLogout }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [title, setTitle] = useState("Rook");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +39,6 @@ export function ConversationChat({ administrator = false, checkingSession = fals
 
   const clearDraft = () => {
     setCurrentId(null);
-    setTitle("Rook");
     setMessages([]);
     setComposerVersion((version) => version + 1);
     if (!administrator) localStorage.removeItem(STORAGE_KEY);
@@ -57,13 +55,11 @@ export function ConversationChat({ administrator = false, checkingSession = fals
     setError(null);
     setMessages([]);
     setCurrentId(id);
-    setTitle("Rook");
     setComposerVersion((value) => value + 1);
     try {
       const conversation = await getConversation(id, controller.signal);
       if (!isCurrent()) return;
       setMessages(conversation.messages);
-      setTitle(conversation.title);
       if (!administrator) localStorage.setItem(STORAGE_KEY, id);
     } catch (failure) {
       if (!isCurrent()) return;
@@ -125,10 +121,9 @@ export function ConversationChat({ administrator = false, checkingSession = fals
     setMessages((items) => [...items, draftMessage("user", content), assistant]);
     try {
       await streamChat(content, currentId, {
-        onMetadata: (id, persistedTitle) => {
+        onMetadata: (id) => {
           if (!isCurrent()) return;
           setCurrentId(id);
-          setTitle(persistedTitle);
           if (!administrator) localStorage.setItem(STORAGE_KEY, id);
         },
         onToken: (token) => {
@@ -171,7 +166,7 @@ export function ConversationChat({ administrator = false, checkingSession = fals
   return (
     <div className="conversation-layout">
       <ConversationSidebar conversations={conversations} showHistory={administrator} currentId={currentId} open={sidebarOpen} disabled={loading} onClose={() => setSidebarOpen(false)} onSelect={openConversation} onLogout={onLogout} />
-      <ChatWindow title={title} messages={messages} loading={loading} error={error} composerVersion={composerVersion} administrator={administrator} onOpenSidebar={() => setSidebarOpen(true)} onNew={startConversation} onSend={sendMessage} />
+      <ChatWindow messages={messages} loading={loading} error={error} composerVersion={composerVersion} administrator={administrator} onOpenSidebar={() => setSidebarOpen(true)} onNew={startConversation} onSend={sendMessage} />
     </div>
   );
 }

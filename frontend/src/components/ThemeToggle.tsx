@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 
-export function ThemeToggle() {
+export function ThemeToggle({ labeled = false }: { labeled?: boolean }) {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme === "dark" ? "dark" : "light");
   useEffect(() => {
     const preference = window.matchMedia?.("(prefers-color-scheme: dark)");
@@ -24,7 +24,8 @@ export function ThemeToggle() {
     setTheme(next);
     try { localStorage.setItem("rook.theme", next); } catch { /* Theme still works without storage. */ }
   };
-  return <button className="icon-button theme-toggle" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} onClick={toggle}>
+  return <button className={labeled ? "mobile-nav-button mobile-theme-toggle" : "icon-button theme-toggle"} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} onClick={toggle}>
     {theme === "dark" ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
+    {labeled && <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
   </button>;
 }

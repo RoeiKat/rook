@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import indexHtml from "../index.html?raw";
 import { ChatWindow, INFO_TEXT } from "../src/components/ChatWindow";
@@ -23,13 +23,13 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("appearance", () => {
-  it("uses the supplied SVG at both sizes and falls back to text if unavailable", () => {
+  it("uses the mark in the rail and the full logo on the welcome screen", () => {
     render(<><RookLogo /><RookLogo size="welcome" /></>);
     const logos = screen.getAllByRole("img", { name: "Rook" });
     expect(logos).toHaveLength(2);
-    expect(logos.every((image) => image.getAttribute("src") === "/rook.svg")).toBe(true);
-    fireEvent.error(logos[0]);
-    expect(screen.getByText("Rook")).toBeTruthy();
+    expect(logos[0].classList).toContain("rook-logo-rail");
+    expect(logos[1].classList).toContain("rook-logo-welcome");
+    expect(indexHtml).toContain('href="/rook-mark.svg"');
   });
 
   it.each([
@@ -54,7 +54,7 @@ describe("appearance", () => {
   });
 
   it("shows the exact tooltip with hover, keyboard focus and touch, and dismisses on Escape", () => {
-    render(<ChatWindow title="Rook" messages={[]} loading={false} error={null} onOpenSidebar={vi.fn()} onNew={vi.fn()} onSend={vi.fn()} />);
+    render(<ChatWindow messages={[]} loading={false} error={null} onOpenSidebar={vi.fn()} onNew={vi.fn()} onSend={vi.fn()} />);
     const info = screen.getByRole("button", { name: "About Rook" });
     fireEvent.mouseEnter(info.parentElement!);
     expect(screen.getByRole("tooltip").textContent).toBe(INFO_TEXT);
@@ -68,6 +68,23 @@ describe("appearance", () => {
     fireEvent.pointerDown(info, { pointerType: "touch" });
     fireEvent.click(info);
     expect(screen.getByRole("tooltip")).toBeTruthy();
+  });
+
+  it("opens the mobile navigation and exposes its controls", () => {
+    const startNew = vi.fn();
+    render(<ChatWindow messages={[]} loading={false} error={null} onOpenSidebar={vi.fn()} onNew={startNew} onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    const menu = screen.getByRole("complementary", { name: "Rook menu" });
+    expect(within(menu).getByRole("img", { name: "Rook" })).toBeTruthy();
+    const about = within(menu).getByRole("button", { name: "About Rook" });
+    fireEvent.click(about);
+    expect(about.getAttribute("aria-expanded")).toBe("true");
+    expect(within(menu).getByText(INFO_TEXT)).toBeTruthy();
+    expect(within(menu).queryByRole("tooltip")).toBeNull();
+    expect(within(menu).getByRole("button", { name: "Switch to dark mode" })).toBeTruthy();
+    fireEvent.click(within(menu).getByRole("button", { name: "New conversation" }));
+    expect(startNew).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("complementary", { name: "Rook menu" })).toBeNull();
   });
 });
 

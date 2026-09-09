@@ -65,13 +65,13 @@ describe("public chat", () => {
     expect(screen.queryByText("Sign in")).toBeNull();
   });
 
-  it("creates on first send, displays metadata title, and includes the ID on follow-ups", async () => {
+  it("creates on first send without displaying a title and includes the ID on follow-ups", async () => {
     render(<App />);
     submitMessage();
     await screen.findByText("A streamed answer");
     await waitFor(() => expect((screen.getByRole("button", { name: "New conversation" }) as HTMLButtonElement).disabled).toBe(false));
     expect(streamChat).toHaveBeenNthCalledWith(1, "What projects has Roei built?", null, expect.any(Object), expect.any(AbortSignal));
-    expect(screen.getByRole("heading", { name: conversation.title })).toBeTruthy();
+    expect(screen.queryByText(conversation.title)).toBeNull();
     expect(localStorage.getItem("rook.conversationId")).toBe(conversation.id);
     submitMessage("Tell me more");
     await waitFor(() => expect(streamChat).toHaveBeenCalledTimes(2));
@@ -85,7 +85,7 @@ describe("public chat", () => {
     vi.mocked(streamChat).mockReturnValue(pending.promise);
     render(<App />);
     submitMessage();
-    expect(screen.getByText("Responding...")).toBeTruthy();
+    expect(screen.queryByText("Responding...")).toBeNull();
     expect((screen.getByRole("button", { name: "New conversation" }) as HTMLButtonElement).disabled).toBe(true);
     submitMessage("Second question");
     expect(streamChat).toHaveBeenCalledTimes(1);
