@@ -1,5 +1,14 @@
 import { useLayoutEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import type { Message } from "../types";
+
+function MessageContent({ message, loading }: { message: Message; loading: boolean }) {
+  const content = message.content || (loading ? "Thinking..." : "");
+  if (message.role === "assistant") {
+    return <div className="message-markdown"><ReactMarkdown>{content}</ReactMarkdown></div>;
+  }
+  return <p>{content}</p>;
+}
 
 export function MessageList({ messages, loading }: { messages: Message[]; loading: boolean }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -14,7 +23,7 @@ export function MessageList({ messages, loading }: { messages: Message[]; loadin
     <div className="message-column">
       {messages.map((message) => <article key={message.id} className={`message message-${message.role}`}>
         <span className="sr-only">{message.role === "user" ? "You" : "Rook"}</span>
-        <p>{message.content || (loading ? "Thinking..." : "")}</p>
+        <MessageContent message={message} loading={loading} />
       </article>)}
     </div>
   </div>;

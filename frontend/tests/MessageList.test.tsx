@@ -14,6 +14,18 @@ const message: Message = {
 };
 
 describe("MessageList", () => {
+  it("renders assistant Markdown while keeping user messages plain", () => {
+    const { container } = render(<MessageList messages={[
+      { ...message, content: "**Literal user text**" },
+      { ...message, id: "reply", role: "assistant", content: "**Important answer**" },
+    ]} loading={false} />);
+
+    const [userMessage, assistantMessage] = container.querySelectorAll("article");
+    expect(userMessage.querySelector("strong")).toBeNull();
+    expect(userMessage.textContent).toContain("**Literal user text**");
+    expect(assistantMessage.querySelector("strong")?.textContent).toBe("Important answer");
+  });
+
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn(() => ({}) as never);
   });
