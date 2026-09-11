@@ -65,3 +65,7 @@ export async function deleteDocument(documentId: string): Promise<void> {
 export async function runIngestion(): Promise<IngestionResult> {
   return (await apiFetch("/api/ingestion/run", { method: "POST" })).json();
 }
+
+export async function rebuildKnowledgeBase(): Promise<IngestionResult> {
+  return (await apiFetch("/api/ingestion/rebuild", { method: "POST" })).json();
+}

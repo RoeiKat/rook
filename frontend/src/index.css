@@ -689,6 +689,7 @@
 .documents-heading,
 .upload-panel,
 .upload-controls,
+.documents-actions,
 .document-row,
 .document-actions {
   display: flex;
@@ -775,6 +776,7 @@
 .secondary-action,
 .primary-action,
 .ingest-action,
+.rebuild-action,
 .danger-action {
   min-height: 42px;
   border-radius: 999px;
@@ -817,6 +819,23 @@
   border: 0;
   color: var(--black);
   background: var(--accent);
+}
+.documents-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+.rebuild-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  border: 1px solid var(--button-border);
+  color: var(--foreground);
+  background: transparent;
+}
+.rebuild-action:hover:not(:disabled) {
+  background: var(--surface);
 }
 .knowledge-message {
   margin-top: 0;
@@ -873,6 +892,13 @@
 }
 .document-details .document-error {
   color: #c94b4b;
+}
+.document-details .document-identity {
+  overflow-wrap: anywhere;
+}
+.document-identity code {
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .document-status {
   min-width: 76px;
@@ -1114,6 +1140,10 @@
   .upload-controls {
     align-items: stretch;
     flex-direction: column;
+  }
+  .documents-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
   }
   .file-picker {
     max-width: none;

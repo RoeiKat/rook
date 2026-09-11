@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from langchain_core.documents import Document
+from pinecone.exceptions import NotFoundException
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,6 +177,13 @@ async def reconcile_local_documents(
     storage = storage or get_document_storage()
     if not isinstance(storage, LocalDocumentStorage):
         return
+    state = await session.scalar(
+        select(IngestionState).where(IngestionState.id == 1).with_for_update()
+    )
+    if state is None:
+        raise RuntimeError("Ingestion control state is unavailable")
+    if state.is_running:
+        return
     keys = {
         key for key in await asyncio.to_thread(storage.list)
         if PurePosixPath(key).suffix.lower() in SUPPORTED_EXTENSIONS
@@ -248,9 +256,10 @@ async def knowledge_status(session: AsyncSession) -> dict:
             KnowledgeDocument.content_hash != KnowledgeDocument.last_ingested_hash,
         )).limit(1)
     )
+    dirty = dirty_count is not None or bool(state and state.last_error)
     return {
-        "dirty": dirty_count is not None,
-        "synchronized": dirty_count is None and not bool(state and state.is_running),
+        "dirty": dirty,
+        "synchronized": not dirty and not bool(state and state.is_running),
         "is_running": bool(state and state.is_running),
         "started_at": state.started_at if state else None,
         "finished_at": state.finished_at if state else None,
@@ -259,7 +268,11 @@ async def knowledge_status(session: AsyncSession) -> dict:
 
 
 async def ensure_ingestion_idle(session: AsyncSession) -> None:
-    state = await session.get(IngestionState, 1)
+    # Serialize uploads, replacements, deletions, and filesystem reconciliation.
+    # The lock is released by the mutation's commit or request rollback.
+    state = await session.scalar(
+        select(IngestionState).where(IngestionState.id == 1).with_for_update()
+    )
     if state and state.is_running:
         raise IngestionAlreadyRunning("An ingestion run is already in progress")
 
@@ -280,18 +293,41 @@ def _prepare_chunks(document: KnowledgeDocument, content: bytes) -> list[Documen
 
 def _delete_vectors(document_id: uuid.UUID, vector_store=None) -> None:
     store = vector_store or get_vector_store()
-    store.delete(filter={"document_id": {"$eq": str(document_id)}})
+    try:
+        store.delete(filter={"document_id": {"$eq": str(document_id)}})
+    except NotFoundException:
+        # Pinecone removes an empty namespace. Deleting from one that no longer
+        # exists is already the desired idempotent result.
+        return
+
+
+def _upsert_vectors(document: KnowledgeDocument, chunks: list[Document], vector_store=None) -> None:
+    if not chunks:
+        return
+    store = vector_store or get_vector_store()
+    # Human-readable IDs make all chunks for one document easy to group in
+    # Pinecone while remaining deterministic and safe to retry.
+    ids = [
+        f"{document.id}:{document.content_hash}:{index}"
+        for index in range(len(chunks))
+    ]
+    store.add_documents(chunks, ids=ids)
 
 
 def _replace_vectors(document: KnowledgeDocument, chunks: list[Document], vector_store=None) -> None:
+    _delete_vectors(document.id, vector_store)
+    _upsert_vectors(document, chunks, vector_store)
+
+
+def _clear_vector_namespace(vector_store=None) -> None:
+    """Delete every vector in the vector store's configured namespace."""
     store = vector_store or get_vector_store()
-    store.delete(filter={"document_id": {"$eq": str(document.id)}})
-    if chunks:
-        ids = [
-            hashlib.sha256(f"{document.id}:{document.content_hash}:{index}".encode()).hexdigest()
-            for index in range(len(chunks))
-        ]
-        store.add_documents(chunks, ids=ids)
+    try:
+        store.delete(delete_all=True)
+    except NotFoundException:
+        # A prior rebuild may already have removed the namespace. An absent
+        # namespace is equivalent to a successful clear and can be rebuilt.
+        return
 
 
 async def delete_document(
@@ -331,6 +367,59 @@ async def _acquire_run(session: AsyncSession) -> None:
         raise IngestionAlreadyRunning("An ingestion run is already in progress")
 
 
+async def _synchronize_documents(
+    session: AsyncSession,
+    documents: list[KnowledgeDocument],
+    storage: DocumentStorage,
+    vector_store=None,
+    replace_existing_vectors: bool = True,
+) -> tuple[int, int, int]:
+    processed = deleted = failed = 0
+    for candidate in documents:
+        document = await session.get(KnowledgeDocument, candidate.id)
+        if document is None:
+            continue
+        if document.status == "deleting":
+            try:
+                await delete_document(session, document, storage, vector_store)
+                deleted += 1
+            except DocumentOperationError:
+                failed += 1
+            continue
+        document.status = "processing"
+        document.last_error = None
+        await session.commit()
+        try:
+            content = await asyncio.to_thread(storage.read, document.storage_key)
+            chunks = await asyncio.to_thread(_prepare_chunks, document, content)
+            vector_operation = _replace_vectors if replace_existing_vectors else _upsert_vectors
+            await asyncio.to_thread(vector_operation, document, chunks, vector_store)
+            document.last_ingested_hash = document.content_hash
+            document.status = "ready"
+            document.last_error = None
+            document.ingested_at = datetime.now(UTC)
+            await session.commit()
+            processed += 1
+        except Exception as exc:
+            await session.rollback()
+            current = await session.get(KnowledgeDocument, candidate.id)
+            if current:
+                current.status = "failed"
+                current.last_error = f"Ingestion failed ({type(exc).__name__}); retry is safe."
+                await session.commit()
+            failed += 1
+    return processed, deleted, failed
+
+
+async def _release_run(session: AsyncSession, failed: int, error: str | None = None) -> None:
+    state = await session.get(IngestionState, 1)
+    if state:
+        state.is_running = False
+        state.finished_at = datetime.now(UTC)
+        state.last_error = error or (f"{failed} document operation(s) failed." if failed else None)
+        await session.commit()
+
+
 async def ingest_dirty_documents(
     session: AsyncSession,
     storage: DocumentStorage | None = None,
@@ -347,45 +436,51 @@ async def ingest_dirty_documents(
                 KnowledgeDocument.content_hash != KnowledgeDocument.last_ingested_hash,
             )).order_by(KnowledgeDocument.created_at)
         ))
-        for candidate in documents:
-            document = await session.get(KnowledgeDocument, candidate.id)
-            if document is None:
-                continue
-            if document.status == "deleting":
-                try:
-                    await delete_document(session, document, storage, vector_store)
-                    deleted += 1
-                except DocumentOperationError:
-                    failed += 1
-                continue
-            document.status = "processing"
-            document.last_error = None
-            await session.commit()
-            try:
-                content = await asyncio.to_thread(storage.read, document.storage_key)
-                chunks = await asyncio.to_thread(_prepare_chunks, document, content)
-                await asyncio.to_thread(_replace_vectors, document, chunks, vector_store)
-                document.last_ingested_hash = document.content_hash
-                document.status = "ready"
-                document.last_error = None
-                document.ingested_at = datetime.now(UTC)
-                await session.commit()
-                processed += 1
-            except Exception as exc:
-                await session.rollback()
-                current = await session.get(KnowledgeDocument, candidate.id)
-                if current:
-                    current.status = "failed"
-                    current.last_error = f"Ingestion failed ({type(exc).__name__}); retry is safe."
-                    await session.commit()
-                failed += 1
+        processed, deleted, failed = await _synchronize_documents(
+            session, documents, storage, vector_store
+        )
     finally:
-        state = await session.get(IngestionState, 1)
-        if state:
-            state.is_running = False
-            state.finished_at = datetime.now(UTC)
-            state.last_error = f"{failed} document operation(s) failed." if failed else None
-            await session.commit()
+        await _release_run(session, failed)
+    status = await knowledge_status(session)
+    return {
+        "processed": processed,
+        "deleted": deleted,
+        "failed": failed,
+        "dirty": bool(status["dirty"]),
+    }
+
+
+async def rebuild_knowledge_base(
+    session: AsyncSession,
+    storage: DocumentStorage | None = None,
+    vector_store=None,
+) -> dict[str, int | bool]:
+    """Clear the configured Pinecone namespace and rebuild it from local originals."""
+    storage = storage or get_document_storage()
+    await _acquire_run(session)
+    processed = deleted = failed = 0
+    release_error: str | None = None
+    try:
+        documents = list(await session.scalars(
+            select(KnowledgeDocument).order_by(KnowledgeDocument.created_at)
+        ))
+        # Persist dirty state before the destructive external operation. A crash or
+        # provider failure can therefore never leave the UI claiming synchronization.
+        for document in documents:
+            if document.status != "deleting":
+                document.status = "pending"
+                document.last_error = None
+        await session.commit()
+        try:
+            await asyncio.to_thread(_clear_vector_namespace, vector_store)
+        except Exception as exc:
+            release_error = f"Namespace rebuild failed ({type(exc).__name__}); retry is safe."
+            raise DocumentOperationError("Pinecone namespace could not be cleared") from exc
+        processed, deleted, failed = await _synchronize_documents(
+            session, documents, storage, vector_store, replace_existing_vectors=False
+        )
+    finally:
+        await _release_run(session, failed, release_error)
     status = await knowledge_status(session)
     return {
         "processed": processed,

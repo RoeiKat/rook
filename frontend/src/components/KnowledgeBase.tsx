@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { FileText, RefreshCw, Trash2, Upload } from "lucide-react";
+import { FileText, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
 import { isAuthenticationError } from "../api/chat";
 import {
   deleteDocument,
   getIngestionStatus,
   listDocuments,
   replaceDocument,
+  rebuildKnowledgeBase,
   runIngestion,
   uploadDocument,
   type KnowledgeDocument,
@@ -45,10 +46,10 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
   }, [onAuthenticationFailure]);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
-    const [items, current] = await Promise.all([
-      listDocuments(signal),
-      getIngestionStatus(signal),
-    ]);
+    // Listing performs local reconciliation; read status afterwards so the two
+    // responses always describe the same committed inventory.
+    const items = await listDocuments(signal);
+    const current = await getIngestionStatus(signal);
     if (!signal?.aborted && mounted.current) {
       setDocuments(items);
       setStatus(current);
@@ -119,6 +120,19 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
       : `Knowledge base synchronized. Processed ${result.processed} document(s).`;
   }, "Knowledge base synchronized.");
 
+  const rebuild = () => {
+    const confirmed = window.confirm(
+      "Rebuild the knowledge base? This deletes every vector in Rook's configured Pinecone namespace, then re-ingests all locally stored documents. This cannot be undone.",
+    );
+    if (!confirmed) return;
+    void perform("rebuild", async () => {
+      const result = await rebuildKnowledgeBase();
+      return result.failed
+        ? `Rebuild finished with ${result.failed} failed document operation(s). You can retry safely.`
+        : `Pinecone namespace rebuilt. Ingested ${result.processed} document(s).`;
+    }, "Pinecone namespace rebuilt.");
+  };
+
   const busy = action !== null || Boolean(status?.is_running);
 
   return (
@@ -130,7 +144,13 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
           <p>Manage source documents and synchronize their searchable chunks.</p>
         </div>
         <div className={`sync-state ${status?.dirty ? "is-dirty" : "is-clean"}`} role="status">
-          {status?.is_running ? "Processing" : status?.dirty ? "Changes pending" : "Synchronized"}
+          {status?.is_running
+            ? "Processing"
+            : status?.dirty
+              ? "Changes pending"
+              : !loading && documents.length === 0
+                ? "No managed documents"
+                : "Synchronized"}
         </div>
       </header>
 
@@ -155,10 +175,16 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
       <section className="documents-panel" aria-labelledby="documents-heading">
         <div className="documents-heading">
           <div><h2 id="documents-heading">Documents</h2><p>{documents.length} stored document{documents.length === 1 ? "" : "s"}</p></div>
-          <button className="ingest-action" disabled={busy || !status?.dirty} onClick={ingest}>
-            <RefreshCw size={17} className={busy ? "spin" : ""} aria-hidden="true" />
-            {action === "ingest" || status?.is_running ? "Ingesting..." : "Ingest changes"}
-          </button>
+          <div className="documents-actions">
+            <button className="rebuild-action" disabled={busy} onClick={rebuild}>
+              <RotateCcw size={16} className={action === "rebuild" ? "spin" : ""} aria-hidden="true" />
+              {action === "rebuild" ? "Rebuilding..." : "Rebuild Pinecone"}
+            </button>
+            <button className="ingest-action" disabled={busy || !status?.dirty} onClick={ingest}>
+              <RefreshCw size={17} className={action === "ingest" || status?.is_running ? "spin" : ""} aria-hidden="true" />
+              {action === "ingest" || status?.is_running ? "Ingesting..." : "Ingest changes"}
+            </button>
+          </div>
         </div>
 
         {loading ? <p className="document-empty" role="status">Loading documents...</p> : documents.length === 0
@@ -169,7 +195,8 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
                 <FileText size={21} aria-hidden="true" />
                 <div className="document-details">
                   <strong>{document.filename}</strong>
-                  <span>{formatBytes(document.size_bytes)} · Last ingested: {formatTime(document.ingested_at)}</span>
+                  <span>{formatBytes(document.size_bytes)} / Last ingested: {formatTime(document.ingested_at)}</span>
+                  <span className="document-identity">Document ID: <code>{document.document_id}</code></span>
                   {document.last_error && <span className="document-error" role="alert">{document.last_error}</span>}
                 </div>
                 <span className={`document-status status-${document.status}`}>{document.status}</span>

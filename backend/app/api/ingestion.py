@@ -24,6 +24,7 @@ from ingestion.service import (
     ingest_dirty_documents,
     knowledge_status,
     reconcile_local_documents,
+    rebuild_knowledge_base,
     replace_upload,
     save_upload,
     sanitize_filename,
@@ -97,7 +98,6 @@ async def list_documents(session: AsyncSession = Depends(get_session)):
 @router.get("/status", response_model=KnowledgeStatusResponse)
 async def get_ingestion_status(session: AsyncSession = Depends(get_session)):
     try:
-        await reconcile_local_documents(session)
         return await knowledge_status(session)
     except Exception as exc:
         logger.error("Ingestion status failed (%s)", type(exc).__name__)
@@ -182,3 +182,17 @@ async def start_ingestion(session: AsyncSession = Depends(get_session)):
     except Exception as exc:
         logger.error("Ingestion run failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Ingestion could not be completed") from exc
+
+
+@router.post("/rebuild", response_model=IngestionResult)
+async def rebuild_ingestion(session: AsyncSession = Depends(get_session)):
+    try:
+        await reconcile_local_documents(session)
+        return await rebuild_knowledge_base(session)
+    except IngestionAlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DocumentOperationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Knowledge-base rebuild failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Knowledge-base rebuild could not be completed") from exc

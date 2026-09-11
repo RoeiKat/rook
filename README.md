@@ -157,6 +157,11 @@ stable document ID before upserting deterministic chunk IDs. Failed runs stay di
 and can be retried. Deletion removes vectors first, then the original object, then
 the database record; every step is safe to retry.
 
+The protected **Rebuild Pinecone** action is the recovery path after a database
+volume reset or legacy ingestion. After confirmation, it clears only Rook's
+configured Pinecone namespace and re-ingests every locally managed document. A
+rebuild with no managed documents leaves that namespace empty.
+
 The CLI calls the same reconciliation and ingestion service as the administrator
 API:
 

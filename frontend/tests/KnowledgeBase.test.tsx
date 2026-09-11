@@ -7,6 +7,7 @@ import {
   deleteDocument,
   getIngestionStatus,
   listDocuments,
+  rebuildKnowledgeBase,
   replaceDocument,
   runIngestion,
   uploadDocument,
@@ -19,6 +20,7 @@ vi.mock("../src/api/ingestion", async (importOriginal) => ({
   deleteDocument: vi.fn(),
   getIngestionStatus: vi.fn(),
   listDocuments: vi.fn(),
+  rebuildKnowledgeBase: vi.fn(),
   replaceDocument: vi.fn(),
   runIngestion: vi.fn(),
   uploadDocument: vi.fn(),
@@ -49,16 +51,25 @@ beforeEach(() => {
   vi.mocked(replaceDocument).mockResolvedValue(document);
   vi.mocked(deleteDocument).mockResolvedValue(undefined);
   vi.mocked(runIngestion).mockResolvedValue({ processed: 1, deleted: 0, failed: 0, dirty: false });
+  vi.mocked(rebuildKnowledgeBase).mockResolvedValue({ processed: 1, deleted: 0, failed: 0, dirty: false });
+  vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  vi.restoreAllMocks();
+  cleanup();
+});
 
 describe("knowledge-base administration", () => {
   it("renders dirty state and supports uploading, replacing, deleting, and ingesting", async () => {
     render(<KnowledgeBase onAuthenticationFailure={vi.fn()} />);
     expect(await screen.findByText("profile.md")).toBeTruthy();
     expect(screen.getByText("Changes pending")).toBeTruthy();
-    expect(screen.getByText("2.0 KB · Last ingested: Never")).toBeTruthy();
+    expect(screen.getByText("2.0 KB / Last ingested: Never")).toBeTruthy();
+    expect(screen.getByText(document.document_id)).toBeTruthy();
+    expect(vi.mocked(listDocuments).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(getIngestionStatus).mock.invocationCallOrder[0],
+    );
     expect((screen.getByRole("button", { name: "Ingest changes" }) as HTMLButtonElement).disabled).toBe(false);
 
     const upload = new File(["new"], "new.txt", { type: "text/plain" });
@@ -103,5 +114,24 @@ describe("knowledge-base administration", () => {
     render(<KnowledgeBase onAuthenticationFailure={expired} />);
     await waitFor(() => expect(expired).toHaveBeenCalledOnce());
     expect(screen.queryByText("Unauthorized")).toBeNull();
+  });
+
+  it("confirms and rebuilds Pinecone when the managed inventory is empty", async () => {
+    vi.mocked(listDocuments).mockResolvedValue([]);
+    vi.mocked(getIngestionStatus).mockResolvedValue({
+      ...dirtyStatus, dirty: false, synchronized: true,
+    });
+    vi.mocked(rebuildKnowledgeBase).mockResolvedValue({
+      processed: 0, deleted: 0, failed: 0, dirty: false,
+    });
+    render(<KnowledgeBase onAuthenticationFailure={vi.fn()} />);
+
+    await screen.findByText("No managed documents");
+    fireEvent.click(screen.getByRole("button", { name: "Rebuild Pinecone" }));
+
+    expect(window.confirm).toHaveBeenCalledOnce();
+    await waitFor(() => expect(rebuildKnowledgeBase).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Pinecone namespace rebuilt. Ingested 0 document(s)."))
+      .toBeTruthy();
   });
 });

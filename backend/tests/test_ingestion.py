@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from fastapi import FastAPI
+from pinecone.exceptions import NotFoundException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -48,9 +49,20 @@ class MemoryVectors:
     def __init__(self):
         self.vectors = {}
         self.fail_add = False
+        self.fail_clear = False
+        self.missing_on_clear = False
         self.deletes = []
+        self.clear_count = 0
 
-    def delete(self, filter):
+    def delete(self, filter=None, delete_all=False):
+        if delete_all:
+            if self.fail_clear:
+                raise RuntimeError("private Pinecone details")
+            if self.missing_on_clear:
+                raise NotFoundException(status=404, reason="namespace not found")
+            self.vectors.clear()
+            self.clear_count += 1
+            return
         document_id = filter["document_id"]["$eq"]
         self.deletes.append(document_id)
         self.vectors = {
@@ -141,6 +153,7 @@ async def test_replace_ingest_retry_and_deterministic_vectors(ingestion_api):
     assert first_run.json() == {"processed": 1, "deleted": 0, "failed": 0, "dirty": False}
     original_ids = set(ingestion_api.vectors.vectors)
     assert original_ids
+    assert all(vector_id.startswith(f"{document_id}:") for vector_id in original_ids)
     assert all(chunk.metadata["document_id"] == document_id for chunk in ingestion_api.vectors.vectors.values())
     assert (await client.post("/api/ingestion/run")).json()["processed"] == 0
     assert set(ingestion_api.vectors.vectors) == original_ids
@@ -194,6 +207,53 @@ async def test_delete_and_repeated_delete_clean_vectors(ingestion_api):
     assert not ingestion_api.storage.objects
     assert (await ingestion_api.client.delete(path)).status_code == 204
     assert (await ingestion_api.client.get("/api/ingestion/status")).json()["synchronized"] is True
+
+
+async def test_rebuild_clears_orphans_and_reingests_every_managed_document(ingestion_api):
+    created = (await upload(ingestion_api.client)).json()
+    ingestion_api.vectors.vectors["legacy-random-id"] = SimpleNamespace(
+        metadata={"source": "/app/ingestion/documents/legacy.md"}
+    )
+
+    rebuilt = await ingestion_api.client.post("/api/ingestion/rebuild")
+
+    assert rebuilt.status_code == 200
+    assert rebuilt.json() == {"processed": 1, "deleted": 0, "failed": 0, "dirty": False}
+    assert ingestion_api.vectors.clear_count == 1
+    assert ingestion_api.vectors.deletes == []
+    assert "legacy-random-id" not in ingestion_api.vectors.vectors
+    assert all(
+        chunk.metadata["document_id"] == created["document_id"]
+        for chunk in ingestion_api.vectors.vectors.values()
+    )
+
+
+async def test_failed_empty_rebuild_stays_dirty_and_can_be_retried(ingestion_api):
+    ingestion_api.vectors.vectors["orphan"] = SimpleNamespace(metadata={})
+    ingestion_api.vectors.fail_clear = True
+
+    failed = await ingestion_api.client.post("/api/ingestion/rebuild")
+
+    assert failed.status_code == 503
+    status = (await ingestion_api.client.get("/api/ingestion/status")).json()
+    assert status["dirty"] is True
+    assert status["synchronized"] is False
+    assert "private Pinecone details" not in status["last_error"]
+
+    ingestion_api.vectors.fail_clear = False
+    retry = await ingestion_api.client.post("/api/ingestion/rebuild")
+    assert retry.status_code == 200
+    assert retry.json()["dirty"] is False
+    assert not ingestion_api.vectors.vectors
+
+
+async def test_rebuild_treats_an_already_missing_namespace_as_cleared(ingestion_api):
+    ingestion_api.vectors.missing_on_clear = True
+
+    rebuilt = await ingestion_api.client.post("/api/ingestion/rebuild")
+
+    assert rebuilt.status_code == 200
+    assert rebuilt.json() == {"processed": 0, "deleted": 0, "failed": 0, "dirty": False}
 
 
 def test_local_storage_is_atomic_scoped_and_idempotent(tmp_path):
