@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 
 DEVELOPMENT_SESSION_SECRET = "rook-local-development-session-secret"
@@ -18,6 +19,8 @@ class Settings:
     environment: str = "development"
     admin_username: str = ""
     admin_password_hash: str = ""
+    document_storage_local_path: str = ""
+    document_upload_max_bytes: int = 10 * 1024 * 1024
 
 
 @lru_cache
@@ -45,6 +48,15 @@ def get_settings() -> Settings:
         raise ValueError("COOKIE_SECURE must be true or false")
     cookie_secure = environment == "production" if not secure_value else secure_value == "true"
 
+    try:
+        upload_max_bytes = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
+    except ValueError as exc:
+        raise ValueError("DOCUMENT_UPLOAD_MAX_BYTES must be an integer") from exc
+    if upload_max_bytes <= 0:
+        raise ValueError("DOCUMENT_UPLOAD_MAX_BYTES must be greater than zero")
+
+    default_document_path = str(Path(__file__).resolve().parents[1] / "ingestion" / "documents")
+
     return Settings(
         database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
         environment=environment,
@@ -53,4 +65,6 @@ def get_settings() -> Settings:
         cookie_secure=cookie_secure,
         admin_username=os.getenv("ADMIN_USERNAME", ""),
         admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH", ""),
+        document_storage_local_path=os.getenv("DOCUMENT_STORAGE_LOCAL_PATH", default_document_path),
+        document_upload_max_bytes=upload_max_bytes,
     )

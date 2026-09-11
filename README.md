@@ -38,6 +38,8 @@ Backend settings are documented in `backend/.env.example`:
 - `OLLAMA_BASE_URL` points Docker at Ollama on the host machine.
 - `OPENAI_API_KEY` is required when an OpenAI model is selected.
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
+- `DOCUMENT_STORAGE_LOCAL_PATH` and `DOCUMENT_UPLOAD_MAX_BYTES` configure local
+  storage and the upload limit.
 - `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` enable the `/admin` login.
 - `FRONTEND_ORIGINS` lists browser origins allowed to call the API.
 
@@ -144,7 +146,19 @@ server-side session and clears the cookie.
 
 ## Document ingestion
 
-Place `.txt`, `.md`, or `.pdf` files in `backend/ingestion/documents`, then run:
+Administrators can open `/admin`, select **Knowledge base**, and upload `.txt`,
+`.md`, or `.pdf` documents. The default Docker configuration stores originals in
+`backend/ingestion/documents`; PostgreSQL remains the inventory and synchronization
+source of truth. Files placed there manually are discovered on the next inventory
+or ingestion request.
+
+The **Ingest changes** action replaces each changed document's Pinecone vectors by
+stable document ID before upserting deterministic chunk IDs. Failed runs stay dirty
+and can be retried. Deletion removes vectors first, then the original object, then
+the database record; every step is safe to retry.
+
+The CLI calls the same reconciliation and ingestion service as the administrator
+API:
 
 ```powershell
 cd backend

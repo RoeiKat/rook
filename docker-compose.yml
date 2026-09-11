@@ -21,6 +21,7 @@ services:
       APP_ENV: development
       DATABASE_URL: postgresql+asyncpg://rook:rook@postgres:5432/rook
       FRONTEND_ORIGINS: http://localhost:5173
+      DOCUMENT_STORAGE_LOCAL_PATH: /app/ingestion/documents
     ports: ["8000:8000"]
     volumes:
       - ./backend:/app

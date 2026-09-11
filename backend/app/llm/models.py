@@ -25,5 +25,5 @@ def get_embedding_model() -> OllamaEmbeddings:
     return OllamaEmbeddings(
         model=EMBEDDING_MODEL,
         base_url=OLLAMA_BASE_URL,
-        num_gpu=0,
+        # num_gpu=0, AMD 780m fix for embeddings
     )

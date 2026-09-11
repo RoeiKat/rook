@@ -11,7 +11,6 @@ from app.rag.vector_store import (
 
 
 def test_vector_store_uses_declared_embedding_model():
-    embeddings = Mock()
     vector_store = Mock()
     with (
         patch.dict(
@@ -20,15 +19,13 @@ def test_vector_store_uses_declared_embedding_model():
                 "PINECONE_API_KEY": "test-key",
             },
         ),
-        patch("app.rag.vector_store.init_embeddings", return_value=embeddings) as init,
         patch("app.rag.vector_store.PineconeVectorStore", return_value=vector_store) as pinecone,
     ):
         assert get_vector_store() is vector_store
 
-    init.assert_called_once_with(embedding_model)
     pinecone.assert_called_once_with(
         index_name=PINECONE_INDEX,
-        embedding=embeddings,
+        embedding=embedding_model,
         namespace=PINECONE_NAMESPACE,
         pinecone_api_key="test-key",
     )
