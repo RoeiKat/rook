@@ -39,10 +39,12 @@ class DocumentOperationError(RuntimeError):
 
 
 def content_digest(content: bytes) -> str:
+    """Calculates the SHA-256 content hash."""
     return hashlib.sha256(content).hexdigest()
 
 
 def sanitize_filename(filename: str) -> str:
+    """Validates and sanitizes .md .txt and .pdf filenames."""
     if not filename or filename != Path(filename).name or "/" in filename or "\\" in filename:
         raise ValueError("Filename must not contain a path")
     normalized = unicodedata.normalize("NFKC", filename).strip()
@@ -56,6 +58,7 @@ def sanitize_filename(filename: str) -> str:
 
 
 def storage_key(document_id: uuid.UUID, digest: str, filename: str) -> str:
+    """Creates the managed document path."""
     return f"{document_id}/{digest}/{filename}"
 
 
@@ -65,6 +68,7 @@ async def save_upload(
     content: bytes,
     storage: DocumentStorage | None = None,
 ) -> tuple[KnowledgeDocument, bool]:
+    """Changes a document while preserving its document ID. Returns the document and a boolean indicating whether it was newly created."""
     storage = storage or get_document_storage()
     safe_name = sanitize_filename(filename)
     digest = content_digest(content)
@@ -112,6 +116,7 @@ async def replace_upload(
     content: bytes,
     storage: DocumentStorage | None = None,
 ) -> tuple[KnowledgeDocument, bool]:
+    """Changes a document while preserving its document ID. Returns the document and a boolean indicating whether it was newly created."""
     storage = storage or get_document_storage()
     safe_name = sanitize_filename(filename)
     digest = content_digest(content)
@@ -173,7 +178,7 @@ def _document_id_from_key(key: str) -> uuid.UUID | None:
 async def reconcile_local_documents(
     session: AsyncSession, storage: DocumentStorage | None = None
 ) -> None:
-    """Discover local manual changes without trusting browser-supplied paths."""
+    """Compares local files with PostgreSQL and detects manually added or missing documents."""
     storage = storage or get_document_storage()
     if not isinstance(storage, LocalDocumentStorage):
         return
@@ -248,6 +253,7 @@ async def reconcile_local_documents(
 
 
 async def knowledge_status(session: AsyncSession) -> dict:
+    """Calculates dirty, synchronized, running, and failed states for the knowledge base."""
     state = await session.get(IngestionState, 1)
     dirty_count = await session.scalar(
         select(KnowledgeDocument.id).where(or_(
