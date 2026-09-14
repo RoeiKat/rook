@@ -4,7 +4,7 @@ from functools import lru_cache
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
 
-CHAT_MODEL = "granite4.1:3b"
+CHAT_MODEL = "granite4.2:3b"
 EMBEDDING_MODEL = "embeddinggemma"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
@@ -15,7 +15,9 @@ def get_chat_model() -> ChatOllama:
     return ChatOllama(
         model=CHAT_MODEL,
         base_url=OLLAMA_BASE_URL,
-        temperature=0,
+        temperature=0.5,
+        enable_thinking=True,
+        reasoning_effort="high",
     )
 
 
