@@ -2,10 +2,9 @@ import asyncio
 import logging
 import re
 
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agent.agent import model
+from app.llm.models import get_title_model
 from app.prompts.title import TITLE_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -16,6 +15,8 @@ MAX_TITLE_CHARACTERS = 160
 FALLBACK_TITLE = "Roei inquiry"
 _OUTER_MARKERS = " \t\r\n\"'`\u201c\u201d\u2018\u2019*#"
 
+
+model = get_title_model()
 
 def _bounded_words(text: str) -> str | None:
     words: list[str] = []
@@ -63,7 +64,7 @@ async def generate_title(question: str) -> str:
     fallback = fallback_title(question)
     try:
         async with asyncio.timeout(TITLE_TIMEOUT_SECONDS):
-            response = await init_chat_model(model).ainvoke(
+            response = await model.ainvoke(
                 [SystemMessage(content=TITLE_PROMPT), HumanMessage(content=question)]
             )
         title = normalize_title(response.content)

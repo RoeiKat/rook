@@ -277,7 +277,7 @@ async def test_title_model_failure_falls_back_before_insertion_and_chat_still_wo
 
     monkeypatch.setattr(chat, "generate_title", titles.generate_title)
     model = SimpleNamespace(ainvoke=AsyncMock(side_effect=TimeoutError("sensitive provider error")))
-    monkeypatch.setattr(titles, "init_chat_model", lambda _: model)
+    monkeypatch.setattr(titles, "get_chat_model", lambda: model)
     async with api.client() as visitor:
         response = await visitor.post(path, json={"message": "What projects has Roei built with Python?"})
         expected = "What projects has Roei built"
