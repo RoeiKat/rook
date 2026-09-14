@@ -5,7 +5,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -63,8 +63,6 @@ async def api(database, monkeypatch):
 
     app.dependency_overrides[get_session] = override_session
     monkeypatch.setattr(chat, "SessionLocal", database)
-    title = AsyncMock(return_value="Roei's Python Projects")
-    monkeypatch.setattr(chat, "generate_title", title)
     states = []
     inserted_titles = []
 
@@ -90,7 +88,7 @@ async def api(database, monkeypatch):
 
     try:
         yield SimpleNamespace(
-            client=client, database=database, title=title, agent=agent, states=states,
+            client=client, database=database, agent=agent, states=states,
             inserted_titles=inserted_titles,
         )
     finally:
@@ -134,10 +132,9 @@ async def test_first_message_title_cookie_stream_and_followup(api, monkeypatch):
         stream = events(response)
         assert [name for name, _ in stream] == ["metadata", "token", "token", "done"]
         metadata = stream[0][1]
-        assert metadata["title"] == "Roei's Python Projects"
+        assert metadata["title"] == "New Conversation"
         assert api.inserted_titles == [metadata["title"]]
         assert "".join(data for name, data in stream if name == "token") == "A grounded answer."
-        api.title.assert_awaited_once_with("What Python projects has Roei built?")
         conversation_id = metadata["conversation_id"]
 
         # A fresh client with the browser's cookie can reopen after a page refresh.
@@ -150,7 +147,6 @@ async def test_first_message_title_cookie_stream_and_followup(api, monkeypatch):
             ]
             followup = await refreshed.post("/api/chat", json={"conversation_id": conversation_id, "message": "Tell me more"})
             assert events(followup)[0][1] == metadata
-        assert api.title.await_count == 1
         assert [item.content for item in api.states[-1]["messages"]] == [
             "What Python projects has Roei built?", "A grounded answer.", "Tell me more"
         ]
@@ -161,7 +157,7 @@ async def test_explicit_creation_has_final_title_and_no_message(api):
         response = await visitor.post("/api/conversations", json={"message": "What Python projects has Roei built?"})
         assert response.status_code == 201
         created = response.json()
-        assert created["title"] == "Roei's Python Projects"
+        assert created["title"] == "New Conversation"
         assert api.inserted_titles == [created["title"]]
         async with api.database() as session:
             stored = await session.get(Conversation, uuid.UUID(created["id"]))
@@ -172,7 +168,6 @@ async def test_explicit_creation_has_final_title_and_no_message(api):
         await visitor.post("/api/chat", json={"conversation_id": created["id"], "message": "What Python projects has Roei built?"})
         detail = (await visitor.get(f'/api/conversations/{created["id"]}')).json()
         assert [message["role"] for message in detail["messages"]] == ["user", "assistant"]
-        assert api.title.await_count == 1
 
 
 @pytest.mark.parametrize("path,body", [
@@ -184,7 +179,6 @@ async def test_explicit_creation_has_final_title_and_no_message(api):
 async def test_invalid_creation_does_not_insert_or_call_models(api, path, body):
     async with api.client() as visitor:
         assert (await visitor.post(path, json=body)).status_code == 422
-    api.title.assert_not_called()
     api.agent.assert_not_called()
     async with api.database() as session:
         assert await session.scalar(select(func.count()).select_from(Conversation)) == 0
@@ -195,7 +189,6 @@ async def test_cross_session_and_nonexistent_ids_are_indistinguishable(api):
     async with api.client() as owner, api.client() as stranger:
         created = await owner.post("/api/chat", json={"message": "What are Roei's projects?"})
         conversation_id = events(created)[0][1]["conversation_id"]
-        api.title.reset_mock()
         api.agent.reset_mock()
         for candidate in [conversation_id, str(uuid.uuid4())]:
             detail = await stranger.get(f"/api/conversations/{candidate}")
@@ -205,7 +198,6 @@ async def test_cross_session_and_nonexistent_ids_are_indistinguishable(api):
             assert "text/event-stream" not in continuation.headers["content-type"]
         assert (await stranger.get("/api/conversations")).status_code == 401
         assert (await owner.get("/api/conversations")).status_code == 401
-    api.title.assert_not_called()
     api.agent.assert_not_called()
     async with api.database() as session:
         assert await session.scalar(select(func.count()).select_from(Message)) == 2
@@ -230,7 +222,6 @@ async def test_administrator_can_inspect_historical_rows_and_logout(api):
         assert (await administrator.post("/api/auth/logout")).status_code == 200
         assert (await administrator.get("/api/conversations")).status_code == 401
         assert (await administrator.get(f"/api/conversations/{historical_id}")).status_code == 404
-    api.title.assert_not_called()
 
 
 async def test_failed_stream_does_not_persist_partial_assistant_or_emit_done(api, monkeypatch):
@@ -257,7 +248,6 @@ async def test_mutations_require_csrf_before_model_or_write(api, headers):
         visitor.headers.clear()
         response = await visitor.post("/api/chat", json={"message": "Hello"}, headers=headers)
         assert response.status_code == 403
-    api.title.assert_not_called()
     api.agent.assert_not_called()
 
 
@@ -269,22 +259,3 @@ async def test_login_validation_does_not_echo_password(api):
         assert response.status_code == 422
         assert "private-password" not in response.text
         assert all("input" not in error for error in response.json()["detail"])
-
-
-@pytest.mark.parametrize("path", ["/api/chat", "/api/conversations"])
-async def test_title_model_failure_falls_back_before_insertion_and_chat_still_works(api, monkeypatch, path):
-    from app.agent import titles
-
-    monkeypatch.setattr(chat, "generate_title", titles.generate_title)
-    model = SimpleNamespace(ainvoke=AsyncMock(side_effect=TimeoutError("sensitive provider error")))
-    monkeypatch.setattr(titles, "get_chat_model", lambda: model)
-    async with api.client() as visitor:
-        response = await visitor.post(path, json={"message": "What projects has Roei built with Python?"})
-        expected = "What projects has Roei built"
-        assert api.inserted_titles == [expected]
-        if path == "/api/chat":
-            assert events(response)[0][1]["title"] == expected
-            assert events(response)[-1][0] == "done"
-        else:
-            assert response.status_code == 201
-            assert response.json()["title"] == expected

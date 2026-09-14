@@ -16,10 +16,10 @@ from app.auth import Identity, apply_visitor_cookie, get_identity, require_admin
 from app.database.connection import SessionLocal, get_session
 from app.database.models import Conversation, Message
 from app.database.repository import add_message, create_conversation, get_conversation, list_conversations
-from app.agent.titles import generate_title
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+NEW_CONVERSATION_TITLE = "New Conversation"
 
 
 class InitialQuestion(BaseModel):
@@ -83,11 +83,12 @@ async def conversations(
     return await list_conversations(session, identity)
 
 
-async def create_from_question(
-    session: AsyncSession, question: str, identity: Identity
+async def create_new_conversation(
+    session: AsyncSession, identity: Identity
 ) -> Conversation:
-    title = await generate_title(question)
-    return await create_conversation(session, title, identity.visitor_session_id)
+    return await create_conversation(
+        session, NEW_CONVERSATION_TITLE, identity.visitor_session_id
+    )
 
 
 @router.post(
@@ -100,7 +101,7 @@ async def new_conversation(
     identity: Identity = Depends(get_identity),
     session: AsyncSession = Depends(get_session),
 ):
-    conversation = await create_from_question(session, body.message, identity)
+    conversation = await create_new_conversation(session, identity)
     apply_visitor_cookie(response, identity)
     return conversation
 
@@ -136,7 +137,7 @@ async def chat(body: ChatRequest, identity: Identity = Depends(get_identity)):
                 for item in sorted(conversation.messages, key=lambda item: item.created_at)
             ]
         else:
-            conversation = await create_from_question(session, body.message, identity)
+            conversation = await create_new_conversation(session, identity)
             history = []
         await add_message(session, conversation, "user", body.message)
         conversation_id, title = conversation.id, conversation.title
