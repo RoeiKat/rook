@@ -1,5 +1,3 @@
-"""Provider-neutral storage for original knowledge-base document bytes."""
-
 from __future__ import annotations
 
 import os
@@ -13,62 +11,112 @@ from app.config import get_settings
 
 
 class DocumentStorage(Protocol):
+    """Define the storage operations required by document ingestion."""
+
+    # Identify which provider owns a stored document.
     provider: str
 
-    def save(self, key: str, content: bytes) -> None: ...
-    def read(self, key: str) -> bytes: ...
-    def delete(self, key: str) -> None: ...
-    def list(self) -> list[str]: ...
-    def exists(self, key: str) -> bool: ...
+    def save(self, key: str, content: bytes) -> None:
+        """Persist document bytes under a stable key."""
+        ...
+
+    def read(self, key: str) -> bytes:
+        """Return the bytes stored under a key."""
+        ...
+
+    def delete(self, key: str) -> None:
+        """Remove a key when it exists."""
+        ...
+
+    def list(self) -> list[str]:
+        """List all keys currently held by the provider."""
+        ...
+
+    def exists(self, key: str) -> bool:
+        """Report whether a key currently exists."""
+        ...
 
 
 def validate_key(key: str) -> str:
+    """Normalize a relative storage key and reject path traversal."""
+    # Interpret keys as provider-neutral POSIX paths.
     path = PurePosixPath(key)
+    # Prevent empty, absolute, Windows-style, or parent-traversing keys.
     if not key or key.startswith(("/", "\\")) or "\\" in key or ".." in path.parts:
         raise ValueError("Invalid document storage key")
+    # Return one normalized representation for every provider operation.
     return path.as_posix()
 
 
 @dataclass
 class LocalDocumentStorage:
+    """Store original document bytes atomically beneath one local directory."""
+
+    # Hold the configured root for all document content.
     root: Path
+    # Record the provider name persisted with document metadata.
     provider: str = "local"
 
     def __post_init__(self) -> None:
+        """Resolve and create the configured local storage root."""
+        # Resolve the root once so later containment checks are reliable.
         self.root = self.root.resolve()
+        # Ensure the storage directory exists before it is used.
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
+        """Resolve a validated key beneath the configured storage root."""
+        # Combine the normalized key with the local root and resolve it.
         path = (self.root / validate_key(key)).resolve()
+        # Reject any path that escapes the configured root.
         if path != self.root and self.root not in path.parents:
             raise ValueError("Invalid document storage key")
+        # Return the safe absolute local path.
         return path
 
     def save(self, key: str, content: bytes) -> None:
+        """Atomically save document bytes under a validated key."""
+        # Resolve the final destination safely.
         target = self._path(key)
+        # Create any document ID and digest directories required by the key.
         target.parent.mkdir(parents=True, exist_ok=True)
+        # Track the temporary path so failures can clean it up.
         temporary: str | None = None
         try:
+            # Create the temporary file on the destination filesystem.
             with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as handle:
+                # Remember the temporary name after the handle closes.
                 temporary = handle.name
+                # Write the complete document payload.
                 handle.write(content)
+                # Flush Python's file buffer.
                 handle.flush()
+                # Flush operating-system buffers before publishing the file.
                 os.fsync(handle.fileno())
+            # Atomically replace any prior file with the completed payload.
             os.replace(temporary, target)
         finally:
+            # Remove a leftover temporary file after any failed save.
             if temporary and os.path.exists(temporary):
                 os.unlink(temporary)
 
     def read(self, key: str) -> bytes:
+        """Read document bytes from a validated local key."""
+        # Resolve and read the complete document file.
         return self._path(key).read_bytes()
 
     def delete(self, key: str) -> None:
+        """Delete a local document if it still exists."""
         try:
+            # Resolve and remove the document path.
             self._path(key).unlink()
         except FileNotFoundError:
+            # Treat repeated deletion as successful.
             return
 
     def list(self) -> list[str]:
+        """Return sorted provider-neutral keys for all stored documents."""
+        # Walk files recursively, omit temporary files, and return relative keys.
         return sorted(
             path.relative_to(self.root).as_posix()
             for path in self.root.rglob("*")
@@ -76,18 +124,26 @@ class LocalDocumentStorage:
         )
 
     def exists(self, key: str) -> bool:
+        """Report whether a validated key points to a local file."""
+        # Resolve the key safely before checking the filesystem.
         return self._path(key).is_file()
 
 
 @lru_cache
 def get_document_storage() -> DocumentStorage:
+    """Return the cached local document store from application settings."""
+    # Load the current application settings.
     settings = get_settings()
+    # Fail early when the local path is empty.
     validate_document_storage_config()
+    # Construct the provider at the configured local root.
     return LocalDocumentStorage(Path(settings.document_storage_local_path))
 
 
 def validate_document_storage_config() -> None:
     """Fail clearly when local document storage is not configured."""
+    # Load the configured document storage path.
     settings = get_settings()
+    # Reject blank paths before startup or ingestion begins.
     if not settings.document_storage_local_path.strip():
         raise ValueError("DOCUMENT_STORAGE_LOCAL_PATH is required for local storage")
