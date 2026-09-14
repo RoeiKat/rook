@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { getSession, login, logout } from "../api/chat";
 import { ConversationChat } from "./ConversationChat";
+import { KnowledgeBase } from "./KnowledgeBase";
 
 type SessionState = "checking" | "anonymous" | "admin";
 
@@ -10,6 +11,7 @@ export function AdminPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [section, setSection] = useState<"conversations" | "knowledge">("conversations");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -51,14 +53,26 @@ export function AdminPage() {
 
   if (session === "admin") {
     return (
-      <ConversationChat
-        administrator
-        onAuthenticationFailure={() => {
-          setError("Your administrator session has ended. Please sign in again.");
-          setSession("anonymous");
-        }}
-        onLogout={signOut}
-      />
+      <div className="admin-shell">
+        <header className="admin-navigation">
+          <nav aria-label="Administrator sections">
+            <button aria-current={section === "conversations" ? "page" : undefined} onClick={() => setSection("conversations")}>Conversations</button>
+            <button aria-current={section === "knowledge" ? "page" : undefined} onClick={() => setSection("knowledge")}>Knowledge base</button>
+          </nav>
+          <button onClick={signOut} className="sign-out admin-sign-out">Sign out</button>
+        </header>
+        <div className="admin-section">
+          {section === "conversations"
+            ? <ConversationChat administrator onAuthenticationFailure={() => {
+                setError("Your administrator session has ended. Please sign in again.");
+                setSession("anonymous");
+              }} />
+            : <KnowledgeBase onAuthenticationFailure={() => {
+                setError("Your administrator session has ended. Please sign in again.");
+                setSession("anonymous");
+              }} />}
+        </div>
+      </div>
     );
   }
 

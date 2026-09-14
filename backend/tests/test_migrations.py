@@ -61,7 +61,7 @@ async def test_existing_postgresql_database_migrates_without_changing_history():
             assert old["title"] == "Historical title with original words intact"
             assert old["visitor_session_id"] is None
             assert await connection.scalar(text("SELECT content FROM messages WHERE id=:id"), {"id": message_id}) == "Original content"
-            assert await connection.scalar(text("SELECT count(*) FROM schema_migrations")) == 1
+            assert await connection.scalar(text("SELECT count(*) FROM schema_migrations")) == 2
             columns = await connection.run_sync(lambda sync: inspect(sync).get_columns("conversations"))
             assert next(column for column in columns if column["name"] == "title")["default"] is None
             foreign_keys = await connection.run_sync(lambda sync: inspect(sync).get_foreign_keys("conversations"))
