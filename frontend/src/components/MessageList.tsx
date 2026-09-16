@@ -3,11 +3,13 @@ import ReactMarkdown from "react-markdown";
 import type { Message } from "../types";
 
 function MessageContent({ message, loading }: { message: Message; loading: boolean }) {
-  const content = message.content || (loading ? "Thinking..." : "");
   if (message.role === "assistant") {
-    return <div className="message-markdown"><ReactMarkdown>{content}</ReactMarkdown></div>;
+    if (!message.content && loading) {
+      return <p className="thinking-indicator" role="status">Thinking...</p>;
+    }
+    return <div className="message-markdown"><ReactMarkdown>{message.content}</ReactMarkdown></div>;
   }
-  return <p>{content}</p>;
+  return <p>{message.content}</p>;
 }
 
 export function MessageList({ messages, loading }: { messages: Message[]; loading: boolean }) {

@@ -3,9 +3,9 @@ import { WelcomeRookLogo } from "./RookLogo";
 
 export const WELCOME = {
   sentences: [
-    "What do you want to know about Roei?",
-    "Looking for a business inquiry?",
-    "How may I help you today?",
+    "What would you like to know about Roei?",
+    "Curious about Roei’s work and experience?",
+    "Ask Rook anything about Roei.",
   ],
   typeMs: 65,
   pauseMs: 2300,

@@ -39,6 +39,16 @@ describe("MessageList", () => {
     }).not.toThrow();
   });
 
+  it("shows the animated thinking state with an ellipsis while awaiting a response", () => {
+    const { getByRole } = render(<MessageList messages={[
+      { ...message, id: "reply", role: "assistant", content: "" },
+    ]} loading />);
+
+    const indicator = getByRole("status");
+    expect(indicator.textContent).toBe("Thinking...");
+    expect(indicator.classList.contains("thinking-indicator")).toBe(true);
+  });
+
   it("keeps the reading position during streaming and resumes following at the bottom", () => {
     const view = render(<MessageList messages={[message]} loading />);
     const scroller = view.container.querySelector(".message-list") as HTMLElement;
