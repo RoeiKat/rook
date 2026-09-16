@@ -16,8 +16,16 @@ export function AdminPage() {
   useEffect(() => {
     const controller = new AbortController();
     getSession(controller.signal)
-      .then(({ is_admin }) => setSession(is_admin ? "admin" : "anonymous"))
-      .catch(() => setError("Could not check the administrator session."));
+      .then(({ is_admin }) => {
+        if (controller.signal.aborted) return;
+        setError(null);
+        setSession(is_admin ? "admin" : "anonymous");
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setError("Could not check the administrator session.");
+        setSession("anonymous");
+      });
     return () => controller.abort();
   }, []);
 

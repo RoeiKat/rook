@@ -12,6 +12,7 @@ import {
   type KnowledgeDocument,
   type KnowledgeStatus,
 } from "../api/ingestion";
+import { ConfirmationModal } from "./ConfirmationModal";
 
 interface Props {
   onAuthenticationFailure: () => void;
@@ -35,6 +36,7 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
   const [action, setAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [rebuildConfirmationOpen, setRebuildConfirmationOpen] = useState(false);
   const mounted = useRef(true);
 
   const handleError = useCallback((failure: unknown) => {
@@ -121,10 +123,7 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
   }, "Knowledge base synchronized.");
 
   const rebuild = () => {
-    const confirmed = window.confirm(
-      "Rebuild the knowledge base? This deletes every vector in Rook's configured Pinecone namespace, then re-ingests all locally stored documents. This cannot be undone.",
-    );
-    if (!confirmed) return;
+    setRebuildConfirmationOpen(false);
     void perform("rebuild", async () => {
       const result = await rebuildKnowledgeBase();
       return result.failed
@@ -176,7 +175,7 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
         <div className="documents-heading">
           <div><h2 id="documents-heading">Documents</h2><p>{documents.length} stored document{documents.length === 1 ? "" : "s"}</p></div>
           <div className="documents-actions">
-            <button className="rebuild-action" disabled={busy} onClick={rebuild}>
+            <button className="rebuild-action" disabled={busy} onClick={() => setRebuildConfirmationOpen(true)}>
               <RotateCcw size={16} className={action === "rebuild" ? "spin" : ""} aria-hidden="true" />
               {action === "rebuild" ? "Rebuilding..." : "Rebuild Pinecone"}
             </button>
@@ -215,6 +214,15 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
             ))}
           </div>}
       </section>
+      <ConfirmationModal
+        open={rebuildConfirmationOpen}
+        title="Rebuild the knowledge base?"
+        description="This deletes every vector in Rook's configured Pinecone namespace, then re-ingests all locally stored documents. This cannot be undone."
+        confirmLabel="Rebuild Pinecone"
+        busy={action === "rebuild"}
+        onCancel={() => setRebuildConfirmationOpen(false)}
+        onConfirm={rebuild}
+      />
     </main>
   );
 }

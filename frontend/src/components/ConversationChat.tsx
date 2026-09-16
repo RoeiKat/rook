@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, getConversation, isAuthenticationError, listConversations, streamChat } from "../api/chat";
+import { ApiError, deleteConversation, getConversation, isAuthenticationError, listConversations, streamChat } from "../api/chat";
 import type { Conversation, Message } from "../types";
 import { ChatWindow } from "./ChatWindow";
+import { ConfirmationModal } from "./ConfirmationModal";
 import { ConversationSidebar } from "./ConversationSidebar";
 
 const STORAGE_KEY = "rook.conversationId";
@@ -25,6 +26,8 @@ export function ConversationChat({ administrator = false, checkingSession = fals
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [composerVersion, setComposerVersion] = useState(0);
+  const [deleteCandidate, setDeleteCandidate] = useState<Conversation | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const requestVersion = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const busy = useRef(false);
@@ -57,7 +60,7 @@ export function ConversationChat({ administrator = false, checkingSession = fals
     setCurrentId(id);
     setComposerVersion((value) => value + 1);
     try {
-      const conversation = await getConversation(id, controller.signal);
+      const conversation = await getConversation(id, controller.signal, administrator);
       if (!isCurrent()) return;
       setMessages(conversation.messages);
       if (!administrator) localStorage.setItem(STORAGE_KEY, id);
@@ -161,12 +164,45 @@ export function ConversationChat({ administrator = false, checkingSession = fals
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteCandidate || deleting) return;
+    const target = deleteCandidate;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteConversation(target.id);
+      setConversations((items) => items.filter((item) => item.id !== target.id));
+      if (currentId === target.id) {
+        requestVersion.current += 1;
+        activeRequest.current?.abort();
+        clearDraft();
+        busy.current = false;
+        setLoading(false);
+      }
+      setDeleteCandidate(null);
+    } catch (failure) {
+      handleFailure(failure);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (checkingSession) return <main className="session-loading"><p role="status">Checking session...</p></main>;
 
   return (
     <div className="conversation-layout">
-      <ConversationSidebar conversations={conversations} showHistory={administrator} currentId={currentId} open={sidebarOpen} disabled={loading} onClose={() => setSidebarOpen(false)} onSelect={openConversation} onLogout={onLogout} />
+      <ConversationSidebar conversations={conversations} showHistory={administrator} currentId={currentId} open={sidebarOpen} disabled={loading || deleting} onClose={() => setSidebarOpen(false)} onSelect={openConversation} onDelete={administrator ? setDeleteCandidate : undefined} onLogout={onLogout} />
       <ChatWindow messages={messages} loading={loading} error={error} composerVersion={composerVersion} administrator={administrator} onOpenSidebar={() => setSidebarOpen(true)} onNew={startConversation} onSend={sendMessage} />
+      <ConfirmationModal
+        open={deleteCandidate !== null}
+        title="Delete conversation?"
+        description={`Delete “${deleteCandidate?.title ?? "this conversation"}” and all of its messages? This cannot be undone.`}
+        confirmLabel="Delete conversation"
+        danger
+        busy={deleting}
+        onCancel={() => setDeleteCandidate(null)}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

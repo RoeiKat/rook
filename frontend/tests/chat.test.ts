@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, createConversation, getConversation, getSession, listConversations, login, logout, streamChat } from "../src/api/chat";
+import { ApiError, createConversation, deleteConversation, getConversation, getSession, listConversations, login, logout, streamChat } from "../src/api/chat";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -58,12 +58,16 @@ describe("cookie-authenticated API requests", () => {
     await logout();
     await listConversations();
     await getConversation("conversation-id");
+    await getConversation("admin-conversation", undefined, true);
+    await deleteConversation("conversation-id");
     await createConversation("What has Roei built?");
     for (const [, options] of vi.mocked(fetch).mock.calls) {
       expect(options?.credentials).toBe("include");
-      if (options?.method === "POST") expect(new Headers(options.headers).get("X-CSRF-Protection")).toBe("1");
+      if (options?.method === "POST" || options?.method === "DELETE") expect(new Headers(options.headers).get("X-CSRF-Protection")).toBe("1");
     }
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[5][1]?.body as string)).toEqual({ message: "What has Roei built?" });
+    expect(vi.mocked(fetch).mock.calls[5][0]).toContain("/api/conversations/admin-conversation?include_internal=true");
+    expect(vi.mocked(fetch).mock.calls[6][1]?.method).toBe("DELETE");
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[7][1]?.body as string)).toEqual({ message: "What has Roei built?" });
   });
 
   it("preserves HTTP status for access handling", async () => {

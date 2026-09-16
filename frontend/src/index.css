@@ -581,6 +581,25 @@
   width: 100%;
   padding: 0 4px;
 }
+.message-system,
+.message-tool {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+}
+.message-role {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .history-sidebar {
   display: flex;
   flex-direction: column;
@@ -607,7 +626,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
+  width: calc(100% - 38px);
   min-height: 44px;
   margin-bottom: 6px;
   padding: 10px 12px;
@@ -616,6 +635,27 @@
   text-align: left;
   color: var(--muted);
   background: transparent;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.conversation-delete {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  color: var(--white);
+  background: transparent;
+  transition: color 0.15s, background 0.15s;
+}
+.conversation-delete:hover:not(:disabled) {
+  color: #e24949;
+  background: color-mix(in srgb, #e24949 12%, transparent);
 }
 .history-item svg {
   flex-shrink: 0;
@@ -1012,6 +1052,62 @@
   color: var(--muted);
   text-align: center;
   font-size: 13px;
+}
+.modal-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--black) 70%, transparent);
+}
+.confirmation-modal {
+  width: min(100%, 470px);
+  padding: 26px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--background);
+  box-shadow: 0 24px 80px color-mix(in srgb, var(--black) 38%, transparent);
+}
+.confirmation-modal h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+.confirmation-modal p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+.modal-cancel,
+.modal-confirm {
+  min-height: 42px;
+  padding: 0 17px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.modal-cancel {
+  border: 1px solid var(--button-border);
+  color: var(--foreground);
+  background: transparent;
+}
+.modal-confirm {
+  border: 0;
+  color: var(--black);
+  background: var(--accent);
+}
+.modal-confirm.is-danger {
+  color: var(--white);
+  background: #c73535;
 }
 .spin {
   animation: control-spin 1s linear infinite;

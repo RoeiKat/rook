@@ -33,6 +33,9 @@ services:
     build:
       context: ./frontend
       target: development
+    env_file:
+      - path: ./frontend/.env
+        required: false
     environment:
       API_PROXY_TARGET: http://backend:8000
     volumes:

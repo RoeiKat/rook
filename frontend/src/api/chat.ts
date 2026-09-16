@@ -1,6 +1,6 @@
 import type { Conversation, ConversationDetail } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -54,8 +54,13 @@ export async function listConversations(signal?: AbortSignal): Promise<Conversat
   return (await apiFetch("/api/conversations", { signal })).json();
 }
 
-export async function getConversation(id: string, signal?: AbortSignal): Promise<ConversationDetail> {
-  return (await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, { signal })).json();
+export async function getConversation(id: string, signal?: AbortSignal, includeInternal = false): Promise<ConversationDetail> {
+  const query = includeInternal ? "?include_internal=true" : "";
+  return (await apiFetch(`/api/conversations/${encodeURIComponent(id)}${query}`, { signal })).json();
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function createConversation(message: string, signal?: AbortSignal): Promise<Conversation> {

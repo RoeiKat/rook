@@ -12,7 +12,7 @@ from app.auth import ADMIN_COOKIE, VISITOR_COOKIE, Identity, get_identity, hash_
 from app.config import DEVELOPMENT_SESSION_SECRET, get_settings
 from app.database.connection import get_session
 from app.database.migrations import migrate_schema
-from app.database.models import AdminSession, VisitorSession
+from app.database.models import AdminLoginFailure, AdminSession, VisitorSession
 
 CSRF = {"Origin": "http://localhost:5173", "X-CSRF-Protection": "1"}
 LOGIN = {"username": "roei", "password": "a test password only"}
@@ -26,6 +26,8 @@ async def auth_app(monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password(LOGIN["password"]))
     monkeypatch.setenv("FRONTEND_ORIGINS", "http://localhost:5173")
     monkeypatch.setenv("COOKIE_SECURE", "false")
+    monkeypatch.setenv("ADMIN_LOGIN_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("ADMIN_LOGIN_WINDOW_SECONDS", "60")
     get_settings.cache_clear()
 
     engine = create_async_engine("sqlite+aiosqlite://")
@@ -154,6 +156,30 @@ async def test_invalid_or_expired_admin_session_is_rejected(auth_app):
         ))
         await session.commit()
     assert (await client.get("/api/auth/session")).json() == {"is_admin": False}
+
+
+async def test_failed_logins_are_rate_limited_and_expire(auth_app):
+    client = auth_app.client
+    wrong_login = {"username": LOGIN["username"], "password": "wrong"}
+
+    for _ in range(2):
+        response = await client.post("/api/auth/login", json=wrong_login, headers=CSRF)
+        assert response.status_code == 401
+    limited = await client.post("/api/auth/login", json=wrong_login, headers=CSRF)
+    assert limited.status_code == 429
+    assert limited.json()["detail"] == "Too many login attempts. Try again later."
+    assert int(limited.headers["retry-after"]) > 0
+    assert (await client.post("/api/auth/login", json=LOGIN, headers=CSRF)).status_code == 429
+
+    async with auth_app.sessions() as session:
+        await session.execute(update(AdminLoginFailure).values(
+            attempted_at=datetime.now(UTC) - timedelta(seconds=61)
+        ))
+        await session.commit()
+
+    assert (await client.post("/api/auth/login", json=LOGIN, headers=CSRF)).status_code == 200
+    async with auth_app.sessions() as session:
+        assert await session.scalar(select(AdminLoginFailure)) is None
 
 
 @pytest.mark.parametrize("headers", [{}, {"Origin": "http://localhost:5173"}, {"X-CSRF-Protection": "1"}])

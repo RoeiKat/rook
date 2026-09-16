@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.database.connection import get_session
 from app.database.models import Base, Conversation, Message
 from app.main import app
+from app.prompts.system import SYSTEM_PROMPT
 
 HEADERS = {"Origin": "http://localhost:5173", "X-CSRF-Protection": "1"}
 
@@ -152,7 +153,7 @@ async def test_first_message_title_cookie_stream_and_followup(api, monkeypatch):
         ]
 
 
-async def test_explicit_creation_has_final_title_and_no_message(api):
+async def test_explicit_creation_has_final_title_and_only_system_record(api):
     async with api.client() as visitor:
         response = await visitor.post("/api/conversations", json={"message": "What Python projects has Roei built?"})
         assert response.status_code == 201
@@ -163,7 +164,7 @@ async def test_explicit_creation_has_final_title_and_no_message(api):
             stored = await session.get(Conversation, uuid.UUID(created["id"]))
             assert stored.title == created["title"]
             assert stored.visitor_session_id is not None
-            assert await session.scalar(select(func.count()).select_from(Message)) == 0
+            assert await session.scalar(select(func.count()).select_from(Message)) == 1
         api.agent.assert_not_called()
         await visitor.post("/api/chat", json={"conversation_id": created["id"], "message": "What Python projects has Roei built?"})
         detail = (await visitor.get(f'/api/conversations/{created["id"]}')).json()
@@ -200,7 +201,7 @@ async def test_cross_session_and_nonexistent_ids_are_indistinguishable(api):
         assert (await owner.get("/api/conversations")).status_code == 401
     api.agent.assert_not_called()
     async with api.database() as session:
-        assert await session.scalar(select(func.count()).select_from(Message)) == 2
+        assert await session.scalar(select(func.count()).select_from(Message)) == 3
 
 
 async def test_administrator_can_inspect_historical_rows_and_logout(api):
@@ -216,12 +217,65 @@ async def test_administrator_can_inspect_historical_rows_and_logout(api):
         listing = await administrator.get("/api/conversations")
         assert listing.status_code == 200
         assert listing.json()[0]["title"] == "Original historical title"
-        assert (await administrator.get(f"/api/conversations/{historical_id}")).status_code == 200
+        public_detail = await administrator.get(f"/api/conversations/{historical_id}")
+        assert public_detail.status_code == 200
+        assert public_detail.json()["messages"] == []
+        detail = await administrator.get(f"/api/conversations/{historical_id}?include_internal=true")
+        assert detail.status_code == 200
+        assert detail.json()["messages"][0]["role"] == "system"
+        assert detail.json()["messages"][0]["content"] == SYSTEM_PROMPT
         continuation = await administrator.post("/api/chat", json={"conversation_id": historical_id, "message": "Hello"})
         assert events(continuation)[0][1]["title"] == "Original historical title"
         assert (await administrator.post("/api/auth/logout")).status_code == 200
         assert (await administrator.get("/api/conversations")).status_code == 401
         assert (await administrator.get(f"/api/conversations/{historical_id}")).status_code == 404
+
+
+async def test_admin_sees_tool_answers_but_visitor_does_not(api, monkeypatch):
+    async def tool_events(state, version):
+        yield {
+            "event": "on_tool_end",
+            "data": {"output": SimpleNamespace(content="Private retrieved context")},
+        }
+        yield {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Answer")}}
+
+    monkeypatch.setattr(chat, "get_agent", lambda: SimpleNamespace(astream_events=tool_events))
+    async with api.client() as visitor:
+        response = await visitor.post("/api/chat", json={"message": "What has Roei built?"})
+        conversation_id = events(response)[0][1]["conversation_id"]
+        public_detail = (await visitor.get(f"/api/conversations/{conversation_id}")).json()
+        assert [message["role"] for message in public_detail["messages"]] == ["user", "assistant"]
+
+        async with api.client() as administrator:
+            await administrator.post("/api/auth/login", json={"username": "test-admin", "password": "test-password"})
+            public_panel_detail = (await administrator.get(f"/api/conversations/{conversation_id}")).json()
+            assert [message["role"] for message in public_panel_detail["messages"]] == [
+                "user", "assistant",
+            ]
+            admin_detail = (await administrator.get(
+                f"/api/conversations/{conversation_id}?include_internal=true"
+            )).json()
+            assert [message["role"] for message in admin_detail["messages"]] == [
+                "system", "user", "tool", "assistant",
+            ]
+            assert admin_detail["messages"][2]["content"] == "Private retrieved context"
+
+
+async def test_only_admin_can_delete_a_conversation_and_messages(api):
+    async with api.client() as visitor:
+        response = await visitor.post("/api/chat", json={"message": "What has Roei built?"})
+        conversation_id = events(response)[0][1]["conversation_id"]
+        assert (await visitor.delete(f"/api/conversations/{conversation_id}")).status_code == 401
+
+        async with api.client() as administrator:
+            await administrator.post("/api/auth/login", json={"username": "test-admin", "password": "test-password"})
+            deleted = await administrator.delete(f"/api/conversations/{conversation_id}")
+            assert deleted.status_code == 204
+            assert (await administrator.get(f"/api/conversations/{conversation_id}")).status_code == 404
+
+    async with api.database() as session:
+        assert await session.scalar(select(func.count()).select_from(Conversation)) == 0
+        assert await session.scalar(select(func.count()).select_from(Message)) == 0
 
 
 async def test_failed_stream_does_not_persist_partial_assistant_or_emit_done(api, monkeypatch):

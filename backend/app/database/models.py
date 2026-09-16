@@ -26,6 +26,14 @@ class AdminSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class AdminLoginFailure(Base):
+    __tablename__ = "admin_login_failures"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    client_key: Mapped[str] = mapped_column(String(64), index=True)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 

@@ -10,6 +10,7 @@ Copy the example backend environment file, then start the application:
 
 ```powershell
 Copy-Item backend/.env.example backend/.env
+Copy-Item frontend/.env.example frontend/.env
 docker compose up --build
 ```
 
@@ -40,18 +41,28 @@ Backend settings are documented in `backend/.env.example`:
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
 - `DOCUMENT_STORAGE_LOCAL_PATH` and `DOCUMENT_UPLOAD_MAX_BYTES` configure local
   storage and the upload limit.
-- `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` enable the `/admin` login.
+- `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` enable the administrator login.
+- `ADMIN_LOGIN_MAX_ATTEMPTS` and `ADMIN_LOGIN_WINDOW_SECONDS` limit failed
+  administrator logins per source address. The defaults are 5 attempts per 15 minutes.
 - `FRONTEND_ORIGINS` lists browser origins allowed to call the API.
 
 Frontend settings are documented separately in `frontend/.env.example`:
 
 - `VITE_API_URL` is the public API URL used by the browser. Leave it empty when
   using the included Vite proxy.
+- `VITE_ADMIN_PATH` selects the unadvertised administrator page path. Use a long,
+  random path beginning with `/`; authentication and rate limiting remain the
+  actual security boundaries because frontend values are visible in browser code.
 - `API_PROXY_TARGET` is the backend target used only by the Vite development
   server. Docker Compose sets it to `http://backend:8000` automatically.
 
 Only variables prefixed with `VITE_` are included in browser code. Never put
 passwords, API keys, or session secrets in the frontend environment file.
+
+When `VITE_API_URL` is empty, requests such as `/api/auth/session` go to the same
+origin as the frontend. During development Vite forwards `/api` to
+`API_PROXY_TARGET`; the production Nginx image also forwards `/api` to the backend.
+Set `VITE_API_URL` only when the browser must call a separately hosted public API.
 
 ## Local development without Docker
 
@@ -126,8 +137,9 @@ these tables to see whether the first write occurred.
 
 ## Administrator login
 
-The public chat needs no account. The `/admin` page uses one username and password
-to list all conversations. Generate a password hash from `backend/`:
+The public chat needs no account. The path configured by `VITE_ADMIN_PATH` uses one
+username and password to list all conversations. Generate a password hash from
+`backend/`:
 
 ```powershell
 python -m app.auth
@@ -139,14 +151,18 @@ quotes because it contains dollar signs:
 ```env
 ADMIN_USERNAME=roei
 ADMIN_PASSWORD_HASH='<generated hash>'
+ADMIN_LOGIN_MAX_ATTEMPTS=5
+ADMIN_LOGIN_WINDOW_SECONDS=900
 ```
 
 The browser receives one admin cookie after login. Logout deletes its matching
-server-side session and clears the cookie.
+server-side session and clears the cookie. Failed login records are stored as
+one-way source-address hashes in PostgreSQL and expire from the active window
+automatically.
 
 ## Document ingestion
 
-Administrators can open `/admin`, select **Knowledge base**, and upload `.txt`,
+Administrators can open the configured `VITE_ADMIN_PATH`, select **Knowledge base**, and upload `.txt`,
 `.md`, or `.pdf` documents. The default Docker configuration stores originals in
 `backend/ingestion/documents`; PostgreSQL remains the inventory and synchronization
 source of truth. Files placed there manually are discovered on the next inventory
@@ -191,4 +207,14 @@ the optional Nginx production image:
 
 ```powershell
 docker build --target production -t rook-frontend ./frontend
+```
+
+For a production image, pass public frontend settings at build time because Vite
+embeds them into the static bundle:
+
+```powershell
+docker build --target production `
+  --build-arg VITE_ADMIN_PATH=/your-random-administrator-path `
+  --build-arg VITE_API_URL=https://api.example.com `
+  -t rook-frontend ./frontend
 ```

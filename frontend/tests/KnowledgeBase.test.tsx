@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../src/api/chat";
 import {
@@ -129,7 +129,9 @@ describe("knowledge-base administration", () => {
     await screen.findByText("No managed documents");
     fireEvent.click(screen.getByRole("button", { name: "Rebuild Pinecone" }));
 
-    expect(window.confirm).toHaveBeenCalledOnce();
+    const modal = screen.getByRole("dialog", { name: "Rebuild the knowledge base?" });
+    expect(window.confirm).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole("button", { name: "Rebuild Pinecone" }));
     await waitFor(() => expect(rebuildKnowledgeBase).toHaveBeenCalledOnce());
     expect(await screen.findByText("Pinecone namespace rebuilt. Ingested 0 document(s)."))
       .toBeTruthy();
