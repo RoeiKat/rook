@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
-import { ApiError, createConversation, getConversation, getSession, listConversations, login, logout, streamChat, type StreamHandlers } from "../src/api/chat";
+import { ApiError, createConversation, deleteConversation, getConversation, getSession, listConversations, login, logout, streamChat, type StreamHandlers } from "../src/api/chat";
 import type { ConversationDetail } from "../src/types";
 
 vi.mock("../src/api/chat", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/api/chat")>(),
   getSession: vi.fn(), login: vi.fn(), logout: vi.fn(),
-  createConversation: vi.fn(), getConversation: vi.fn(),
+  createConversation: vi.fn(), deleteConversation: vi.fn(), getConversation: vi.fn(),
   listConversations: vi.fn(), streamChat: vi.fn(),
 }));
 
@@ -31,12 +32,14 @@ function submitMessage(message = "What projects has Roei built?") {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv("VITE_ADMIN_PATH", "/admin");
   localStorage.clear();
   window.history.replaceState({}, "", "/");
   Element.prototype.scrollIntoView = vi.fn();
   vi.mocked(getSession).mockResolvedValue({ is_admin: false });
   vi.mocked(login).mockResolvedValue({ is_admin: true });
   vi.mocked(logout).mockResolvedValue(undefined);
+  vi.mocked(deleteConversation).mockResolvedValue(undefined);
   vi.mocked(listConversations).mockResolvedValue([conversation]);
   vi.mocked(getConversation).mockResolvedValue(conversation);
   vi.mocked(streamChat).mockImplementation(async (_message, _id, handlers) => {
@@ -46,7 +49,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 describe("public chat", () => {
   it("does not fetch administrator history and resets New conversation locally", async () => {
@@ -125,6 +131,38 @@ describe("public chat", () => {
 describe("administrator history", () => {
   beforeEach(() => window.history.replaceState({}, "", "/admin"));
 
+  it("serves administration only from the configured path", async () => {
+    vi.stubEnv("VITE_ADMIN_PATH", "/private-control-room");
+    window.history.replaceState({}, "", "/private-control-room");
+
+    render(<App />);
+
+    await screen.findByLabelText("Username");
+    expect(getSession).toHaveBeenCalledOnce();
+  });
+
+  it("does not expose the default admin page when a private path is configured", () => {
+    vi.stubEnv("VITE_ADMIN_PATH", "/private-control-room");
+    window.history.replaceState({}, "", "/admin");
+
+    render(<App />);
+
+    expect(screen.queryByLabelText("Username")).toBeNull();
+    expect(getSession).not.toHaveBeenCalled();
+  });
+
+  it("ignores the aborted session check caused by development Strict Mode", async () => {
+    vi.mocked(getSession)
+      .mockRejectedValueOnce(new DOMException("Aborted", "AbortError"))
+      .mockResolvedValueOnce({ is_admin: false });
+
+    render(<StrictMode><App /></StrictMode>);
+
+    await screen.findByLabelText("Username");
+    expect(screen.queryByText("Could not check the administrator session.")).toBeNull();
+    expect(getSession).toHaveBeenCalledTimes(2);
+  });
+
   it("waits for server-validated administrator state before fetching history", async () => {
     const pending = deferred<{ is_admin: boolean }>();
     vi.mocked(getSession).mockReturnValue(pending.promise);
@@ -135,6 +173,7 @@ describe("administrator history", () => {
     await act(async () => pending.resolve({ is_admin: true }));
     fireEvent.click(await screen.findByRole("button", { name: conversation.title }));
     await screen.findByText("A private answer");
+    expect(getConversation).toHaveBeenCalledWith(conversation.id, expect.any(AbortSignal), true);
     expect(localStorage.getItem("rook.conversationId")).toBeNull();
   });
 
@@ -186,5 +225,21 @@ describe("administrator history", () => {
     await screen.findByLabelText("Username");
     expect(screen.getByRole("alert").textContent).toContain("session has ended");
     expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+  });
+
+  it("confirms deletion, removes the conversation, and clears an open transcript", async () => {
+    vi.mocked(getSession).mockResolvedValue({ is_admin: true });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: conversation.title }));
+    await screen.findByText("A private answer");
+
+    fireEvent.click(screen.getByRole("button", { name: `Delete ${conversation.title}` }));
+    expect(deleteConversation).not.toHaveBeenCalled();
+    const modal = screen.getByRole("dialog", { name: "Delete conversation?" });
+    fireEvent.click(within(modal).getByRole("button", { name: "Delete conversation" }));
+
+    await waitFor(() => expect(deleteConversation).toHaveBeenCalledWith(conversation.id));
+    expect(screen.queryByText(conversation.title)).toBeNull();
+    expect(screen.queryByText("A private answer")).toBeNull();
   });
 });

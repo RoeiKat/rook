@@ -29,7 +29,7 @@ describe("appearance", () => {
     expect(logos).toHaveLength(2);
     expect(logos[0].classList).toContain("rook-logo-rail");
     expect(logos[1].classList).toContain("welcome-rook-logo");
-    expect(indexHtml).toContain('href="/rook-mark.svg"');
+    expect(indexHtml).toContain('href="/rook-favicon.svg"');
   });
 
   it.each([
@@ -79,7 +79,9 @@ describe("appearance", () => {
     const about = within(menu).getByRole("button", { name: "About Rook" });
     fireEvent.click(about);
     expect(about.getAttribute("aria-expanded")).toBe("true");
-    expect(within(menu).getByText(INFO_TEXT)).toBeTruthy();
+    expect(within(menu).getByText((_, element) =>
+      element?.tagName === "P" && element.textContent === INFO_TEXT
+    )).toBeTruthy();
     expect(within(menu).queryByRole("tooltip")).toBeNull();
     expect(within(menu).getByRole("button", { name: "Switch to dark mode" })).toBeTruthy();
     fireEvent.click(within(menu).getByRole("button", { name: "New conversation" }));
@@ -119,7 +121,7 @@ describe("welcome animation", () => {
     for (let index = 0; index <= WELCOME.sentences[0].length; index++) act(() => vi.advanceTimersByTime(WELCOME.deleteMs));
     expect(typed()).toBe("");
     act(() => vi.advanceTimersByTime(WELCOME.betweenMs));
-    expect(typed()).toBe("L");
+    expect(typed()).toBe(WELCOME.sentences[1][0]);
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });

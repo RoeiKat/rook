@@ -39,6 +39,28 @@ describe("MessageList", () => {
     }).not.toThrow();
   });
 
+  it("labels and renders administrator system and tool records", () => {
+    const { getByText } = render(<MessageList messages={[
+      { ...message, id: "system", role: "system", content: "System instructions" },
+      { ...message, id: "tool", role: "tool", content: "Retrieved context" },
+    ]} loading={false} />);
+
+    expect(getByText("System prompt", { selector: ".message-role" })).toBeTruthy();
+    expect(getByText("System instructions")).toBeTruthy();
+    expect(getByText("Tool answer", { selector: ".message-role" })).toBeTruthy();
+    expect(getByText("Retrieved context")).toBeTruthy();
+  });
+
+  it("shows the animated thinking state with an ellipsis while awaiting a response", () => {
+    const { getByRole } = render(<MessageList messages={[
+      { ...message, id: "reply", role: "assistant", content: "" },
+    ]} loading />);
+
+    const indicator = getByRole("status");
+    expect(indicator.textContent).toBe("Thinking...");
+    expect(indicator.classList.contains("thinking-indicator")).toBe(true);
+  });
+
   it("keeps the reading position during streaming and resumes following at the bottom", () => {
     const view = render(<MessageList messages={[message]} loading />);
     const scroller = view.container.querySelector(".message-list") as HTMLElement;

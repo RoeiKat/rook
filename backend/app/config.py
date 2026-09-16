@@ -19,6 +19,8 @@ class Settings:
     environment: str = "development"
     admin_username: str = ""
     admin_password_hash: str = ""
+    admin_login_max_attempts: int = 5
+    admin_login_window_seconds: int = 15 * 60
     document_storage_local_path: str = ""
     document_upload_max_bytes: int = 10 * 1024 * 1024
 
@@ -55,6 +57,14 @@ def get_settings() -> Settings:
     if upload_max_bytes <= 0:
         raise ValueError("DOCUMENT_UPLOAD_MAX_BYTES must be greater than zero")
 
+    try:
+        admin_login_max_attempts = int(os.getenv("ADMIN_LOGIN_MAX_ATTEMPTS", "5"))
+        admin_login_window_seconds = int(os.getenv("ADMIN_LOGIN_WINDOW_SECONDS", "900"))
+    except ValueError as exc:
+        raise ValueError("Administrator login rate-limit settings must be integers") from exc
+    if admin_login_max_attempts <= 0 or admin_login_window_seconds <= 0:
+        raise ValueError("Administrator login rate-limit settings must be greater than zero")
+
     default_document_path = str(Path(__file__).resolve().parents[1] / "ingestion" / "documents")
 
     return Settings(
@@ -65,6 +75,8 @@ def get_settings() -> Settings:
         cookie_secure=cookie_secure,
         admin_username=os.getenv("ADMIN_USERNAME", ""),
         admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH", ""),
+        admin_login_max_attempts=admin_login_max_attempts,
+        admin_login_window_seconds=admin_login_window_seconds,
         document_storage_local_path=os.getenv("DOCUMENT_STORAGE_LOCAL_PATH", default_document_path),
         document_upload_max_bytes=upload_max_bytes,
     )

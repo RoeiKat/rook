@@ -2,12 +2,24 @@ import { useLayoutEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Message } from "../types";
 
+const ROLE_LABELS: Record<Message["role"], string> = {
+  user: "You",
+  assistant: "Rook",
+  system: "System prompt",
+  tool: "Tool answer",
+};
+
 function MessageContent({ message, loading }: { message: Message; loading: boolean }) {
-  const content = message.content || (loading ? "Thinking..." : "");
   if (message.role === "assistant") {
-    return <div className="message-markdown"><ReactMarkdown>{content}</ReactMarkdown></div>;
+    if (!message.content && loading) {
+      return <p className="thinking-indicator" role="status">Thinking...</p>;
+    }
+    return <div className="message-markdown"><ReactMarkdown>{message.content}</ReactMarkdown></div>;
   }
-  return <p>{content}</p>;
+  if (message.role === "system" || message.role === "tool") {
+    return <><strong className="message-role">{ROLE_LABELS[message.role]}</strong><p>{message.content}</p></>;
+  }
+  return <p>{message.content}</p>;
 }
 
 export function MessageList({ messages, loading }: { messages: Message[]; loading: boolean }) {
@@ -22,7 +34,7 @@ export function MessageList({ messages, loading }: { messages: Message[]; loadin
   }}>
     <div className="message-column">
       {messages.map((message) => <article key={message.id} className={`message message-${message.role}`}>
-        <span className="sr-only">{message.role === "user" ? "You" : "Rook"}</span>
+        <span className="sr-only">{ROLE_LABELS[message.role]}</span>
         <MessageContent message={message} loading={loading} />
       </article>)}
     </div>
