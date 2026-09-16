@@ -121,7 +121,7 @@ describe("welcome animation", () => {
     for (let index = 0; index <= WELCOME.sentences[0].length; index++) act(() => vi.advanceTimersByTime(WELCOME.deleteMs));
     expect(typed()).toBe("");
     act(() => vi.advanceTimersByTime(WELCOME.betweenMs));
-    expect(typed()).toBe("L");
+    expect(typed()).toBe(WELCOME.sentences[1][0]);
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
