@@ -6,12 +6,22 @@ uses Pinecone.
 
 ## Development with Docker
 
-Copy the example backend environment file, then start the application:
+Copy the example environment files, configure `backend/.env`, then start the
+application. By default Compose starts only the application services; it uses the
+database and document-storage URLs from `backend/.env`:
 
 ```powershell
 Copy-Item backend/.env.example backend/.env
 Copy-Item frontend/.env.example frontend/.env
 docker compose up --build
+```
+
+The bundled PostgreSQL 16 container remains available as an opt-in fallback. Set
+`DATABASE_URL` to `postgresql+asyncpg://rook:rook@postgres:5432/rook`, remove any
+pooled URL override, select local document storage if desired, then run:
+
+```powershell
+docker compose --profile local-db up --build
 ```
 
 Open `http://localhost:5173`. Docker Compose runs Vite and Uvicorn in development
@@ -39,8 +49,14 @@ Backend settings are documented in `backend/.env.example`:
 - `OLLAMA_BASE_URL` points Docker at Ollama on the host machine.
 - `OPENAI_API_KEY` is required when an OpenAI model is selected.
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
-- `DOCUMENT_STORAGE_LOCAL_PATH` and `DOCUMENT_UPLOAD_MAX_BYTES` configure local
-  storage and the upload limit.
+- `DATABASE_URL_POOLED` selects the normal application connection when supplied;
+  `DATABASE_URL_UNPOOLED` selects the direct migration connection. `DATABASE_URL`
+  remains the fallback for both.
+- `DOCUMENT_STORAGE_PROVIDER` selects `local` or `s3` storage.
+- `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, and `S3_BUCKET` configure Neon Object Storage.
+- `DOCUMENT_STORAGE_LOCAL_PATH` configures the optional local fallback, and
+  `DOCUMENT_UPLOAD_MAX_BYTES` sets the upload limit.
 - `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` enable the administrator login.
 - `ADMIN_LOGIN_MAX_ATTEMPTS` and `ADMIN_LOGIN_WINDOW_SECONDS` limit failed
   administrator logins per source address. The defaults are 5 attempts per 15 minutes.
@@ -163,10 +179,11 @@ automatically.
 ## Document ingestion
 
 Administrators can open the configured `VITE_ADMIN_PATH`, select **Knowledge base**, and upload `.txt`,
-`.md`, or `.pdf` documents. The default Docker configuration stores originals in
-`backend/ingestion/documents`; PostgreSQL remains the inventory and synchronization
-source of truth. Files placed there manually are discovered on the next inventory
-or ingestion request.
+`.md`, or `.pdf` documents. With `DOCUMENT_STORAGE_PROVIDER=s3`, originals are
+stored in the configured private Neon bucket while PostgreSQL remains the inventory
+and synchronization source of truth. Local storage remains available for offline
+development; files placed there manually are discovered on the next inventory or
+ingestion request.
 
 The **Ingest changes** action replaces each changed document's Pinecone vectors by
 stable document ID before upserting deterministic chunk IDs. Failed runs stay dirty
@@ -175,7 +192,7 @@ the database record; every step is safe to retry.
 
 The protected **Rebuild Pinecone** action is the recovery path after a database
 volume reset or legacy ingestion. After confirmation, it clears only Rook's
-configured Pinecone namespace and re-ingests every locally managed document. A
+configured Pinecone namespace and re-ingests every managed document. A
 rebuild with no managed documents leaves that namespace empty.
 
 The CLI calls the same reconciliation and ingestion service as the administrator

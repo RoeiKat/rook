@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 DEVELOPMENT_SESSION_SECRET = "rook-local-development-session-secret"
@@ -13,6 +14,7 @@ DEFAULT_DATABASE_URL = "postgresql+asyncpg://rook:rook@localhost:5432/rook"
 @dataclass(frozen=True)
 class Settings:
     database_url: str
+    database_migration_url: str
     session_secret: str
     frontend_origins: tuple[str, ...]
     cookie_secure: bool
@@ -21,8 +23,39 @@ class Settings:
     admin_password_hash: str = ""
     admin_login_max_attempts: int = 5
     admin_login_window_seconds: int = 15 * 60
+    document_storage_provider: str = "local"
     document_storage_local_path: str = ""
+    s3_bucket: str = ""
+    aws_endpoint_url_s3: str = ""
+    aws_region: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
     document_upload_max_bytes: int = 10 * 1024 * 1024
+
+
+def async_database_url(value: str) -> str:
+    """Adapt a standard Postgres URL for SQLAlchemy's asyncpg dialect."""
+    parts = urlsplit(value)
+    if parts.scheme not in {"postgres", "postgresql", "postgresql+asyncpg"}:
+        return value
+
+    query: list[tuple[str, str]] = []
+    ssl_mode: str | None = None
+    for key, item in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "sslmode":
+            ssl_mode = item
+        elif key != "channel_binding":
+            query.append((key, item))
+    if ssl_mode and not any(key == "ssl" for key, _ in query):
+        query.append(("ssl", ssl_mode))
+
+    return urlunsplit((
+        "postgresql+asyncpg",
+        parts.netloc,
+        parts.path,
+        urlencode(query),
+        parts.fragment,
+    ))
 
 
 @lru_cache
@@ -66,9 +99,20 @@ def get_settings() -> Settings:
         raise ValueError("Administrator login rate-limit settings must be greater than zero")
 
     default_document_path = str(Path(__file__).resolve().parents[1] / "ingestion" / "documents")
+    raw_database_url = (
+        os.getenv("DATABASE_URL_POOLED")
+        or os.getenv("DATABASE_URL")
+        or DEFAULT_DATABASE_URL
+    )
+    raw_migration_url = (
+        os.getenv("DATABASE_URL_UNPOOLED")
+        or os.getenv("DATABASE_URL")
+        or raw_database_url
+    )
 
     return Settings(
-        database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
+        database_url=async_database_url(raw_database_url),
+        database_migration_url=async_database_url(raw_migration_url),
         environment=environment,
         session_secret=session_secret,
         frontend_origins=origins,
@@ -77,6 +121,12 @@ def get_settings() -> Settings:
         admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH", ""),
         admin_login_max_attempts=admin_login_max_attempts,
         admin_login_window_seconds=admin_login_window_seconds,
+        document_storage_provider=os.getenv("DOCUMENT_STORAGE_PROVIDER", "local").lower(),
         document_storage_local_path=os.getenv("DOCUMENT_STORAGE_LOCAL_PATH", default_document_path),
+        s3_bucket=os.getenv("S3_BUCKET", ""),
+        aws_endpoint_url_s3=os.getenv("AWS_ENDPOINT_URL_S3", ""),
+        aws_region=os.getenv("AWS_REGION", ""),
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", ""),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", ""),
         document_upload_max_bytes=upload_max_bytes,
     )

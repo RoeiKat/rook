@@ -217,7 +217,7 @@ export function KnowledgeBase({ onAuthenticationFailure }: Props) {
       <ConfirmationModal
         open={rebuildConfirmationOpen}
         title="Rebuild the knowledge base?"
-        description="This deletes every vector in Rook's configured Pinecone namespace, then re-ingests all locally stored documents. This cannot be undone."
+        description="This deletes every vector in Rook's configured Pinecone namespace, then re-ingests all stored documents. This cannot be undone."
         confirmLabel="Rebuild Pinecone"
         busy={action === "rebuild"}
         onCancel={() => setRebuildConfirmationOpen(false)}

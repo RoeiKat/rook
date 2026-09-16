@@ -1,5 +1,7 @@
 AGENTS.md
 .env
+.env.local
+.neon
 .venv/
 __pycache__/
 .pytest_cache/
@@ -10,3 +12,4 @@ frontend/dist/
 backend/ingestion/documents/*/
 *.tsbuildinfo
 .DS_Store
+node_modules/

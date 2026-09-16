@@ -643,7 +643,7 @@ async def rebuild_knowledge_base(
     storage: DocumentStorage | None = None,
     vector_store=None,
 ) -> dict[str, int | bool]:
-    """Clear the configured Pinecone namespace and rebuild it from local originals."""
+    """Clear the configured Pinecone namespace and rebuild it from stored originals."""
     # Use injected storage in tests and the configured provider otherwise.
     storage = storage or get_document_storage()
     # Prevent concurrent rebuild or incremental ingestion runs.

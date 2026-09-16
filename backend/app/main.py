@@ -9,7 +9,7 @@ from app.api.auth import router as auth_router
 from app.api.chat import router
 from app.api.ingestion import router as ingestion_router
 from app.config import get_settings
-from app.database.connection import engine
+from app.database.connection import engine, migration_engine
 from app.database.migrations import migrate_schema
 from ingestion.storage import validate_document_storage_config
 
@@ -18,10 +18,12 @@ from ingestion.storage import validate_document_storage_config
 async def lifespan(_: FastAPI):
     # Validate storage selection without contacting remote services.
     validate_document_storage_config()
-    async with engine.begin() as connection:
+    async with migration_engine.begin() as connection:
         await connection.run_sync(migrate_schema)
     yield
     await engine.dispose()
+    if migration_engine is not engine:
+        await migration_engine.dispose()
 
 
 app = FastAPI(title="Rook", lifespan=lifespan)

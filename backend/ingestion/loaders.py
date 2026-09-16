@@ -42,13 +42,16 @@ def load_document_bytes(filename: str, content: bytes) -> list[Document]:
     # Reject content types that the ingestion pipeline cannot parse.
     if suffix not in SUPPORTED_EXTENSIONS:
         raise ValueError("Unsupported document extension")
-    # Give path-based loaders a temporary file with the correct extension.
-    with tempfile.NamedTemporaryFile(suffix=suffix) as handle:
-        # Write the uploaded bytes into the temporary file.
-        handle.write(content)
-        # Flush buffered data before the loader opens the same path.
-        handle.flush()
-        # Reuse the same loader selection as directory ingestion.
-        loader = _loader_for_path(Path(handle.name), suffix)
-        # Parse the file before the temporary handle is closed and removed.
+    # Close the temporary handle before path-based loaders reopen it. Windows
+    # otherwise keeps an exclusive lock on NamedTemporaryFile.
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
+            handle.write(content)
+            handle.flush()
+            temporary_path = Path(handle.name)
+        loader = _loader_for_path(temporary_path, suffix)
         return loader.load()
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
