@@ -443,7 +443,11 @@ def _upsert_vectors(document: KnowledgeDocument, chunks: list[Document], vector_
         for index in range(len(chunks))
     ]
     # Insert the chunks and their matching stable IDs together.
-    store.add_documents(chunks, ids=ids)
+    # LangChain defaults Pinecone upserts to async_req=True, which creates a
+    # multiprocessing-backed ThreadPool. Serverless runtimes such as Vercel do
+    # not provide the semaphore resource that pool requires. This function
+    # already runs in asyncio.to_thread, so keep the provider request blocking.
+    store.add_documents(chunks, ids=ids, async_req=False)
 
 
 def _replace_vectors(document: KnowledgeDocument, chunks: list[Document], vector_store=None) -> None:

@@ -53,6 +53,7 @@ class MemoryVectors:
         self.missing_on_clear = False
         self.deletes = []
         self.clear_count = 0
+        self.add_async_requests = []
 
     def delete(self, filter=None, delete_all=False):
         if delete_all:
@@ -70,9 +71,10 @@ class MemoryVectors:
             if value.metadata["document_id"] != document_id
         }
 
-    def add_documents(self, documents, ids):
+    def add_documents(self, documents, ids, async_req=True):
         if self.fail_add:
             raise RuntimeError("private Pinecone details")
+        self.add_async_requests.append(async_req)
         self.vectors.update(dict(zip(ids, documents, strict=True)))
 
 
@@ -153,6 +155,7 @@ async def test_replace_ingest_retry_and_deterministic_vectors(ingestion_api):
     assert first_run.json() == {"processed": 1, "deleted": 0, "failed": 0, "dirty": False}
     original_ids = set(ingestion_api.vectors.vectors)
     assert original_ids
+    assert ingestion_api.vectors.add_async_requests == [False]
     assert all(vector_id.startswith(f"{document_id}:") for vector_id in original_ids)
     assert all(chunk.metadata["document_id"] == document_id for chunk in ingestion_api.vectors.vectors.values())
     assert (await client.post("/api/ingestion/run")).json()["processed"] == 0
