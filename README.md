@@ -46,6 +46,8 @@ Backend settings are documented in `backend/.env.example`:
 
 - `OLLAMA_BASE_URL` is required and points at the self-hosted Ollama-compatible
   inference service. There is no localhost fallback in application code.
+- `OLLAMA_API_KEY` is sent by the Ollama client as a bearer token when the
+  inference service requires authentication.
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
 - `DATABASE_URL_POOLED` selects the normal application connection when supplied;
   `DATABASE_URL_UNPOOLED` selects the direct schema-initialization connection.
@@ -96,6 +98,7 @@ duration. Configure these environment variables in the Vercel project:
 - `SESSION_SECRET` with at least 32 random characters
 - `FRONTEND_ORIGINS` with the exact public frontend origin
 - `OLLAMA_BASE_URL` with the reachable self-hosted inference origin
+- `OLLAMA_API_KEY` with the inference gateway bearer token
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE`
 - `DOCUMENT_STORAGE_PROVIDER=s3`, `S3_BUCKET`, `AWS_ENDPOINT_URL_S3`,
   `AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`
