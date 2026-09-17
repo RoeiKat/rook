@@ -48,8 +48,8 @@ Backend settings are documented in `backend/.env.example`:
   inference service. There is no localhost fallback in application code.
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
 - `DATABASE_URL_POOLED` selects the normal application connection when supplied;
-  `DATABASE_URL_UNPOOLED` selects the direct migration connection. `DATABASE_URL`
-  remains the fallback for both.
+  `DATABASE_URL_UNPOOLED` selects the direct schema-initialization connection.
+  `DATABASE_URL` remains the fallback for both.
 - `DOCUMENT_STORAGE_PROVIDER` selects `local` or `s3` storage.
 - `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY`, and `S3_BUCKET` configure Neon Object Storage.
@@ -60,9 +60,6 @@ Backend settings are documented in `backend/.env.example`:
 - `ADMIN_LOGIN_MAX_ATTEMPTS` and `ADMIN_LOGIN_WINDOW_SECONDS` limit failed
   administrator logins per source address. The defaults are 5 attempts per 15 minutes.
 - `FRONTEND_ORIGINS` lists browser origins allowed to call the API.
-- `MIGRATE_ON_STARTUP` controls the compatibility startup migration. Leave it
-  enabled for the first deployment; later releases can run
-  `python -m app.database.migrate` explicitly and disable it.
 
 Frontend settings are documented separately in `frontend/.env.example`:
 
@@ -84,14 +81,14 @@ Set `VITE_API_URL` only when the browser must call a separately hosted public AP
 
 ## Deploy to Vercel
 
-Import this repository twice from the Vercel dashboard. Use `backend` as the
-root directory for the FastAPI project and `frontend` as the root directory for
-the Vite project.
+Import this repository once from the Vercel dashboard and keep the detected
+**Services** application preset. The root `vercel.json` builds `frontend/` as a
+Vite service at `/` and `backend/` as a FastAPI service for `/api/*` and
+`/health`. Both services share one deployment URL and deployment lifecycle.
 
-Deploy the backend first. Vercel detects `backend/app/main.py` as the FastAPI
-entry point, while `backend/vercel.json` enables Fluid compute and gives the
-streaming function the Hobby-plan maximum duration. Configure these backend
-environment variables in Vercel:
+The Services configuration loads the FastAPI application from
+`backend/app/main.py` and gives its streaming function the Hobby-plan maximum
+duration. Configure these environment variables in the Vercel project:
 
 - `APP_ENV=production`
 - `DATABASE_URL_POOLED` with the Neon pooled connection string
@@ -108,20 +105,13 @@ Production rejects local document storage because a Vercel Function's local
 filesystem is not persistent. Use the pooled database URL for request traffic
 and the direct URL for migrations.
 
-For the first backend deployment, leave `MIGRATE_ON_STARTUP` enabled so the
-existing transactional, advisory-locked migration initializes the database.
-For later releases, run the migration separately with production environment
-variables and then set `MIGRATE_ON_STARTUP=false`:
+FastAPI initializes the schema automatically when it starts. The operation is
+transactional, idempotent, and protected by a PostgreSQL advisory lock, so a
+fresh production branch is ready without a separate migration command.
 
-```powershell
-cd backend
-python -m app.database.migrate
-```
-
-For the frontend project, set `API_PROXY_TARGET` to the backend's public origin,
-for example `https://rook-api.example.vercel.app`, and leave `VITE_API_URL`
-empty. `frontend/vercel.mjs` proxies `/api` and `/health` to that backend so the
-current HttpOnly session cookies remain same-origin in the browser. It also
+Leave `VITE_API_URL` empty in Vercel. The browser calls `/api` on the shared
+project origin, and Vercel routes the request internally to FastAPI, so the
+current HttpOnly session cookies remain same-origin. The frontend service also
 provides the SPA fallback required for direct visits to the administrator path.
 
 Environment-variable changes apply only to new Vercel deployments, so redeploy

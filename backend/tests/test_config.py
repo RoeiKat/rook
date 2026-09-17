@@ -1,5 +1,3 @@
-import pytest
-
 from app.config import DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES, async_database_url, get_settings
 
 
@@ -36,21 +34,9 @@ def test_settings_use_pooled_url_for_app_and_direct_url_for_migrations(monkeypat
 
 def test_deployment_safety_defaults(monkeypatch):
     monkeypatch.delenv("DOCUMENT_UPLOAD_MAX_BYTES", raising=False)
-    monkeypatch.delenv("MIGRATE_ON_STARTUP", raising=False)
     get_settings.cache_clear()
 
     settings = get_settings()
 
     assert settings.document_upload_max_bytes == DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES
-    assert settings.migrate_on_startup is True
-    get_settings.cache_clear()
-
-
-def test_migration_startup_setting_is_strict(monkeypatch):
-    monkeypatch.setenv("MIGRATE_ON_STARTUP", "sometimes")
-    get_settings.cache_clear()
-
-    with pytest.raises(ValueError, match="MIGRATE_ON_STARTUP must be true or false"):
-        get_settings()
-
     get_settings.cache_clear()

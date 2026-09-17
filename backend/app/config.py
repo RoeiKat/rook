@@ -19,7 +19,6 @@ class Settings:
     session_secret: str
     frontend_origins: tuple[str, ...]
     cookie_secure: bool
-    migrate_on_startup: bool
     environment: str = "development"
     admin_username: str = ""
     admin_password_hash: str = ""
@@ -90,7 +89,6 @@ def get_settings() -> Settings:
         raise ValueError("FRONTEND_ORIGINS must contain at least one origin")
 
     cookie_secure = boolean_setting("COOKIE_SECURE", environment == "production")
-    migrate_on_startup = boolean_setting("MIGRATE_ON_STARTUP", True)
 
     try:
         upload_max_bytes = int(os.getenv(
@@ -129,7 +127,6 @@ def get_settings() -> Settings:
         session_secret=session_secret,
         frontend_origins=origins,
         cookie_secure=cookie_secure,
-        migrate_on_startup=migrate_on_startup,
         admin_username=os.getenv("ADMIN_USERNAME", ""),
         admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH", ""),
         admin_login_max_attempts=admin_login_max_attempts,
