@@ -42,8 +42,16 @@ def load_document_bytes(filename: str, content: bytes) -> list[Document]:
     # Reject content types that the ingestion pipeline cannot parse.
     if suffix not in SUPPORTED_EXTENSIONS:
         raise ValueError("Unsupported document extension")
+    # Text and Markdown are already complete in-memory payloads. Decode them
+    # directly so serverless ingestion does not depend on a writable temp path.
+    if suffix != PDF_EXTENSION:
+        return [Document(
+            page_content=content.decode(TEXT_ENCODING),
+            metadata={"source": filename},
+        )]
     # Close the temporary handle before path-based loaders reopen it. Windows
-    # otherwise keeps an exclusive lock on NamedTemporaryFile.
+    # otherwise keeps an exclusive lock on NamedTemporaryFile. PDFs retain the
+    # path-based loader because PyPDFLoader expects a filesystem path or URL.
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:

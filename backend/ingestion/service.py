@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import re
 import unicodedata
 import uuid
@@ -19,6 +20,8 @@ from app.rag.vector_store import get_vector_store
 from ingestion.chunking import chunk_documents
 from ingestion.loaders import SUPPORTED_EXTENSIONS, load_document_bytes
 from ingestion.storage import DocumentStorage, LocalDocumentStorage, get_document_storage
+
+logger = logging.getLogger(__name__)
 
 SAFE_FILENAME_PATTERN = r"[^A-Za-z0-9._ -]+"
 MAX_FILENAME_STEM_LENGTH = 220
@@ -549,14 +552,17 @@ async def _synchronize_documents(
         document.status = STATUS_PROCESSING
         document.last_error = None
         await session.commit()
+        phase = "reading stored document"
         try:
             # Load the persisted original bytes.
             content = await asyncio.to_thread(storage.read, document.storage_key)
             # Parse, split, and label the source outside the event loop.
+            phase = "parsing document"
             chunks = await asyncio.to_thread(_prepare_chunks, document, content)
             # Rebuilds insert into an already-cleared namespace; normal runs replace.
             vector_operation = _replace_vectors if replace_existing_vectors else _upsert_vectors
             # Apply the selected blocking vector operation in a worker thread.
+            phase = "synchronizing vectors"
             await asyncio.to_thread(vector_operation, document, chunks, vector_store)
             # Record exactly which content hash is now represented in Pinecone.
             document.last_ingested_hash = document.content_hash
@@ -568,6 +574,13 @@ async def _synchronize_documents(
             # Count the completed document.
             processed += 1
         except Exception as exc:
+            # Preserve the traceback in provider logs while exposing only a
+            # stable stage and exception type through the administrator UI.
+            logger.exception(
+                "Document ingestion failed during %s (document_id=%s)",
+                phase,
+                document.id,
+            )
             # Discard uncommitted record changes from this attempt.
             await session.rollback()
             # Reload the candidate after rollback.
@@ -575,7 +588,9 @@ async def _synchronize_documents(
             # Persist a retry-safe error without leaking provider details.
             if current:
                 current.status = STATUS_FAILED
-                current.last_error = f"Ingestion failed ({type(exc).__name__}); retry is safe."
+                current.last_error = (
+                    f"Ingestion failed during {phase} ({type(exc).__name__}); retry is safe."
+                )
                 await session.commit()
             # Count the failure and continue with the remaining corpus.
             failed += 1
