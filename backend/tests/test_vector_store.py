@@ -5,13 +5,13 @@ import pytest
 from app.rag.vector_store import (
     PINECONE_INDEX,
     PINECONE_NAMESPACE,
-    embedding_model,
     get_vector_store,
 )
 
 
 def test_vector_store_uses_declared_embedding_model():
     vector_store = Mock()
+    embedding_model = Mock()
     with (
         patch.dict(
             "os.environ",
@@ -19,6 +19,7 @@ def test_vector_store_uses_declared_embedding_model():
                 "PINECONE_API_KEY": "test-key",
             },
         ),
+        patch("app.rag.vector_store.get_embedding_model", return_value=embedding_model),
         patch("app.rag.vector_store.PineconeVectorStore", return_value=vector_store) as pinecone,
     ):
         assert get_vector_store() is vector_store

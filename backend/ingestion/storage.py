@@ -212,6 +212,8 @@ def validate_document_storage_config() -> None:
     """Fail clearly when the selected document provider is incomplete."""
     settings = get_settings()
     if settings.document_storage_provider == "local":
+        if settings.environment == "production":
+            raise ValueError("DOCUMENT_STORAGE_PROVIDER must be s3 in production")
         if not settings.document_storage_local_path.strip():
             raise ValueError("DOCUMENT_STORAGE_LOCAL_PATH is required for local storage")
         return

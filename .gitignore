@@ -2,6 +2,7 @@ AGENTS.md
 .env
 .env.local
 .neon
+.vercel/
 .venv/
 __pycache__/
 .pytest_cache/

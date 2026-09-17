@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 DEVELOPMENT_SESSION_SECRET = "rook-local-development-session-secret"
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://rook:rook@localhost:5432/rook"
+DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class Settings:
     session_secret: str
     frontend_origins: tuple[str, ...]
     cookie_secure: bool
+    migrate_on_startup: bool
     environment: str = "development"
     admin_username: str = ""
     admin_password_hash: str = ""
@@ -30,7 +32,7 @@ class Settings:
     aws_region: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
-    document_upload_max_bytes: int = 10 * 1024 * 1024
+    document_upload_max_bytes: int = DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES
 
 
 def async_database_url(value: str) -> str:
@@ -58,6 +60,15 @@ def async_database_url(value: str) -> str:
     ))
 
 
+def boolean_setting(name: str, default: bool) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    if value not in {"true", "false"}:
+        raise ValueError(f"{name} must be true or false")
+    return value == "true"
+
+
 @lru_cache
 def get_settings() -> Settings:
     environment = os.getenv("APP_ENV", "development").lower()
@@ -78,13 +89,14 @@ def get_settings() -> Settings:
     if not origins:
         raise ValueError("FRONTEND_ORIGINS must contain at least one origin")
 
-    secure_value = os.getenv("COOKIE_SECURE", "").lower()
-    if secure_value not in {"", "true", "false"}:
-        raise ValueError("COOKIE_SECURE must be true or false")
-    cookie_secure = environment == "production" if not secure_value else secure_value == "true"
+    cookie_secure = boolean_setting("COOKIE_SECURE", environment == "production")
+    migrate_on_startup = boolean_setting("MIGRATE_ON_STARTUP", True)
 
     try:
-        upload_max_bytes = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
+        upload_max_bytes = int(os.getenv(
+            "DOCUMENT_UPLOAD_MAX_BYTES",
+            str(DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES),
+        ))
     except ValueError as exc:
         raise ValueError("DOCUMENT_UPLOAD_MAX_BYTES must be an integer") from exc
     if upload_max_bytes <= 0:
@@ -117,6 +129,7 @@ def get_settings() -> Settings:
         session_secret=session_secret,
         frontend_origins=origins,
         cookie_secure=cookie_secure,
+        migrate_on_startup=migrate_on_startup,
         admin_username=os.getenv("ADMIN_USERNAME", ""),
         admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH", ""),
         admin_login_max_attempts=admin_login_max_attempts,

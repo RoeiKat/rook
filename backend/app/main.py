@@ -18,8 +18,9 @@ from ingestion.storage import validate_document_storage_config
 async def lifespan(_: FastAPI):
     # Validate storage selection without contacting remote services.
     validate_document_storage_config()
-    async with migration_engine.begin() as connection:
-        await connection.run_sync(migrate_schema)
+    if get_settings().migrate_on_startup:
+        async with migration_engine.begin() as connection:
+            await connection.run_sync(migrate_schema)
     yield
     await engine.dispose()
     if migration_engine is not engine:

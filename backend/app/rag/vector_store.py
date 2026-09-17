@@ -11,7 +11,6 @@ PINECONE_NAMESPACE_ENV = "PINECONE_NAMESPACE"
 DEFAULT_PINECONE_INDEX = "rook"
 DEFAULT_PINECONE_NAMESPACE = "documents"
 
-embedding_model = get_embedding_model()
 PINECONE_INDEX = os.getenv(PINECONE_INDEX_ENV, DEFAULT_PINECONE_INDEX)
 PINECONE_NAMESPACE = os.getenv(PINECONE_NAMESPACE_ENV, DEFAULT_PINECONE_NAMESPACE)
 
@@ -26,7 +25,7 @@ def get_vector_store() -> PineconeVectorStore:
     # Bind Pinecone to the shared embedding model, index, and namespace.
     return PineconeVectorStore(
         index_name=PINECONE_INDEX,
-        embedding=embedding_model,
+        embedding=get_embedding_model(),
         namespace=PINECONE_NAMESPACE,
         pinecone_api_key=pinecone_api_key,
     )

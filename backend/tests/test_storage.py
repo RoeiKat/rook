@@ -87,3 +87,15 @@ def test_s3_storage_configuration_requires_every_setting(monkeypatch):
         validate_document_storage_config()
 
     get_settings.cache_clear()
+
+
+def test_production_rejects_ephemeral_local_storage(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SESSION_SECRET", "a-production-secret-that-is-long-enough")
+    monkeypatch.setenv("DOCUMENT_STORAGE_PROVIDER", "local")
+    get_settings.cache_clear()
+
+    with pytest.raises(ValueError, match="must be s3 in production"):
+        validate_document_storage_config()
+
+    get_settings.cache_clear()

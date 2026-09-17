@@ -44,10 +44,8 @@ docker compose up -d --force-recreate backend
 
 Backend settings are documented in `backend/.env.example`:
 
-- `LLM_PROVIDER` and `LLM_MODEL` select the chat and title model.
-- `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL` select the embedding model.
-- `OLLAMA_BASE_URL` points Docker at Ollama on the host machine.
-- `OPENAI_API_KEY` is required when an OpenAI model is selected.
+- `OLLAMA_BASE_URL` is required and points at the self-hosted Ollama-compatible
+  inference service. There is no localhost fallback in application code.
 - `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE` configure RAG.
 - `DATABASE_URL_POOLED` selects the normal application connection when supplied;
   `DATABASE_URL_UNPOOLED` selects the direct migration connection. `DATABASE_URL`
@@ -56,11 +54,15 @@ Backend settings are documented in `backend/.env.example`:
 - `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY`, and `S3_BUCKET` configure Neon Object Storage.
 - `DOCUMENT_STORAGE_LOCAL_PATH` configures the optional local fallback, and
-  `DOCUMENT_UPLOAD_MAX_BYTES` sets the upload limit.
+  `DOCUMENT_UPLOAD_MAX_BYTES` sets the upload limit. The default is 4 MiB so a
+  multipart upload remains below Vercel's 4.5 MB Function request limit.
 - `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` enable the administrator login.
 - `ADMIN_LOGIN_MAX_ATTEMPTS` and `ADMIN_LOGIN_WINDOW_SECONDS` limit failed
   administrator logins per source address. The defaults are 5 attempts per 15 minutes.
 - `FRONTEND_ORIGINS` lists browser origins allowed to call the API.
+- `MIGRATE_ON_STARTUP` controls the compatibility startup migration. Leave it
+  enabled for the first deployment; later releases can run
+  `python -m app.database.migrate` explicitly and disable it.
 
 Frontend settings are documented separately in `frontend/.env.example`:
 
@@ -79,6 +81,51 @@ When `VITE_API_URL` is empty, requests such as `/api/auth/session` go to the sam
 origin as the frontend. During development Vite forwards `/api` to
 `API_PROXY_TARGET`; the production Nginx image also forwards `/api` to the backend.
 Set `VITE_API_URL` only when the browser must call a separately hosted public API.
+
+## Deploy to Vercel
+
+Import this repository twice from the Vercel dashboard. Use `backend` as the
+root directory for the FastAPI project and `frontend` as the root directory for
+the Vite project.
+
+Deploy the backend first. Vercel detects `backend/app/main.py` as the FastAPI
+entry point, while `backend/vercel.json` enables Fluid compute and gives the
+streaming function the Hobby-plan maximum duration. Configure these backend
+environment variables in Vercel:
+
+- `APP_ENV=production`
+- `DATABASE_URL_POOLED` with the Neon pooled connection string
+- `DATABASE_URL_UNPOOLED` with the Neon direct connection string
+- `SESSION_SECRET` with at least 32 random characters
+- `FRONTEND_ORIGINS` with the exact public frontend origin
+- `OLLAMA_BASE_URL` with the reachable self-hosted inference origin
+- `PINECONE_API_KEY`, `PINECONE_INDEX`, and `PINECONE_NAMESPACE`
+- `DOCUMENT_STORAGE_PROVIDER=s3`, `S3_BUCKET`, `AWS_ENDPOINT_URL_S3`,
+  `AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`
+- the optional administrator settings described below
+
+Production rejects local document storage because a Vercel Function's local
+filesystem is not persistent. Use the pooled database URL for request traffic
+and the direct URL for migrations.
+
+For the first backend deployment, leave `MIGRATE_ON_STARTUP` enabled so the
+existing transactional, advisory-locked migration initializes the database.
+For later releases, run the migration separately with production environment
+variables and then set `MIGRATE_ON_STARTUP=false`:
+
+```powershell
+cd backend
+python -m app.database.migrate
+```
+
+For the frontend project, set `API_PROXY_TARGET` to the backend's public origin,
+for example `https://rook-api.example.vercel.app`, and leave `VITE_API_URL`
+empty. `frontend/vercel.mjs` proxies `/api` and `/health` to that backend so the
+current HttpOnly session cookies remain same-origin in the browser. It also
+provides the SPA fallback required for direct visits to the administrator path.
+
+Environment-variable changes apply only to new Vercel deployments, so redeploy
+after changing either project's configuration.
 
 ## Local development without Docker
 
